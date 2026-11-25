@@ -4,10 +4,6 @@ import {defineMessages} from "../locale.ts";
 export const settingsText = defineMessages({
   en: {
     shell: {
-      brandLabel: "Settings",
-      useLightTheme: "Use light theme",
-      useDarkTheme: "Use dark theme",
-      backToReview: "Back to review",
       signOut: "Sign out",
       navLabel: "Settings",
       navHeading: "Settings",
@@ -328,10 +324,6 @@ export const settingsText = defineMessages({
   },
   "zh-TW": {
     shell: {
-      brandLabel: "設定",
-      useLightTheme: "使用淺色主題",
-      useDarkTheme: "使用深色主題",
-      backToReview: "返回審閱",
       signOut: "登出",
       navLabel: "設定",
       navHeading: "設定",

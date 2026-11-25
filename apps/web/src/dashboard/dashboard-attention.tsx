@@ -74,7 +74,7 @@ async function loadProjectAttention(
   const addressed: AttentionItem[] = [];
   for (const {name, threads} of groups) {
     for (const thread of threads) {
-      const item = {href: threadHref(thread), id: thread.id, label: `${name} · ${thread.body}`};
+      const item = {href: threadHref(thread), id: thread.id, label: text.thread(name, thread.body)};
       threadItems.set(thread.id, item);
       if (thread.state === "open" && latestByThread.get(thread.id)?.state === "addressed") addressed.push(item);
     }

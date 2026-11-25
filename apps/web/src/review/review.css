@@ -3504,55 +3504,10 @@ body:has(.as-settings),
   font-family: inherit;
 }
 
-.as-settings__header {
-  background: var(--as-surface);
-  border-bottom: 1px solid var(--as-border);
+.as-settings__topbar {
   position: sticky;
   top: 0;
   z-index: 20;
-}
-
-.as-settings__header-inner {
-  align-items: center;
-  display: flex;
-  gap: 1rem;
-  justify-content: space-between;
-  min-height: var(--as-header-height);
-  /* The mark sits where the workspace puts it, on every screen. */
-  padding: 0.35rem 0.55rem;
-}
-
-.as-settings__brand {
-  align-items: center;
-  color: inherit;
-  display: inline-flex;
-  font-size: var(--text-md);
-  font-weight: 600;
-  gap: 0.55rem;
-  text-decoration: none;
-}
-
-.as-settings__brand-mark {
-  align-items: center;
-  background: var(--color-paper-2);
-  border: 1px solid var(--color-rule-2);
-  border-radius: var(--radius-pill);
-  color: var(--color-ink);
-  display: inline-flex;
-  height: 2rem;
-  justify-content: center;
-  width: 2rem;
-}
-
-.as-settings__mark {
-  height: 1.15rem;
-  width: 1.15rem;
-}
-
-.as-settings__header-actions {
-  align-items: center;
-  display: flex;
-  gap: 0.5rem;
 }
 
 /* One column under a tab row: six destinations do not earn a sidebar. */
@@ -3835,14 +3790,6 @@ body:has(.as-settings),
 }
 
 @media (max-width: 720px) {
-  .as-settings__header-inner {
-    padding-inline: 0.8rem;
-  }
-
-  .as-settings__brand-label {
-    display: none;
-  }
-
   .as-settings__layout {
     padding: var(--space-md) var(--space-md) var(--space-2xl);
   }
@@ -4454,6 +4401,11 @@ body:has(.as-settings),
 
 .as-topbar__grow {
   flex: 1;
+}
+
+.as-topbar .as-bar-button[aria-current="page"] {
+  background: var(--color-hover);
+  font-weight: 600;
 }
 
 .as-topbar__status {
@@ -5406,6 +5358,55 @@ body:has(.as-settings),
     display: block;
     margin: 2px 0 0;
   }
+}
+
+/* Linked folders: divider-separated rows like the files table, no boxed cards. */
+.as-linked-list {
+  border-top: 1px solid var(--color-rule);
+  display: grid;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.as-linked-row {
+  border-bottom: 1px solid var(--color-rule);
+  display: grid;
+  gap: 10px;
+  padding: 14px 12px;
+}
+
+.as-linked-row[aria-current="true"] {
+  background: var(--color-hover);
+}
+
+.as-linked-row__state {
+  color: var(--color-muted);
+  flex: none;
+  font-size: var(--text-xs);
+}
+
+.as-linked-row__state[data-state="unavailable"],
+.as-linked-row__state[data-state="over-limit"] {
+  color: var(--color-bad);
+}
+
+/* Beside the list the inventory starts on the same rule; stacked, the list's last rule serves. */
+@media (min-width: 1024px) {
+  .as-linked-inventory {
+    border-top: 1px solid var(--color-rule);
+    padding-top: 14px;
+  }
+}
+
+.as-linked-note {
+  border-bottom: 1px solid var(--color-rule);
+  padding-bottom: 12px;
+}
+
+.as-page-table td.as-linked-path {
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 /* Dashboard (reader redesign): rules and text, no boxed cards. */

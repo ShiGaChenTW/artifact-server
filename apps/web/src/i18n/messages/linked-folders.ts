@@ -31,7 +31,7 @@ export const linkedFolderText = defineMessages({
       queued: "Scan queued",
       scanning: "Scanning…",
     },
-    files: (count: number) => `${count.toLocaleString()} files`,
+    files: (count: number) => count === 1 ? "1 file" : `${count.toLocaleString()} files`,
     pending: (count: number) => `${count.toLocaleString()} pending`,
     skipped: (count: number) => `${count.toLocaleString()} skipped`,
     ignored: (count: number) => `${count.toLocaleString()} ignored`,
@@ -49,7 +49,7 @@ export const linkedFolderText = defineMessages({
     overLimitEntries: "This folder has more than 20,000 files, so new files are not listed. Narrow it with ignore rules or link a subdirectory.",
     overLimitIgnoreFile: "The .artifactignore file is larger than 64 KiB or has more than 1,000 patterns. Fix it to resume listing.",
     showFiles: (name: string) => `Show files in ${name}`,
-    inventory: "Files",
+    inventoryOf: (name: string) => `Files in ${name}`,
     filters: {
       pending: "Pending",
       all: "All",
@@ -151,7 +151,7 @@ export const linkedFolderText = defineMessages({
     overLimitEntries: "這個資料夾超過 20,000 個檔案，新檔案不會列入。請用忽略規則縮小範圍，或改連結子目錄。",
     overLimitIgnoreFile: "`.artifactignore` 超過 64 KiB 或超過 1,000 條規則，修正後才會繼續列出檔案。",
     showFiles: (name: string) => `顯示「${name}」的檔案`,
-    inventory: "檔案",
+    inventoryOf: (name: string) => `${name} 裡的檔案`,
     filters: {
       pending: "待擷取",
       all: "全部",

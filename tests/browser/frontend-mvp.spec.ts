@@ -680,7 +680,9 @@ test.describe("Artifact Server frontend MVP", () => {
       await expect(fixture.page).toHaveURL(
         new RegExp(`/review/settings/projects/${project.id}$`, "u"),
       );
-      const backToReview = fixture.page.getByRole("link", {name: "Back to review"});
+      // The shared top bar's Review link returns to the Review this visit came from.
+      const backToReview = fixture.page.getByRole("navigation", {name: "Primary"})
+        .getByRole("link", {name: "Review", exact: true});
       await expect(backToReview).toHaveAttribute("href", canonicalReviewUrl);
       await expect(fixture.page.getByRole("link", {name: "Artifact Server"}))
         .toHaveAttribute("href", canonicalReviewUrl);
@@ -1586,14 +1588,13 @@ test.describe("Artifact Server frontend MVP", () => {
       await defaultProjectRow.getByRole("link", {name: "Settings"}).click();
       await expect(fixture.page.getByRole("heading", {name: "Project identity"})).toBeVisible();
       await expect(fixture.page.getByRole("heading", {name: "Git history"})).toHaveCount(0);
-      await expect(fixture.page.getByRole("link", {name: "Artifact Server"})).toContainText("Settings");
-      const settingsHeaderBox = await fixture.page.locator(".as-settings__header-inner").boundingBox();
-      const settingsMarkBox = await fixture.page.locator(".as-settings__brand-mark").boundingBox();
+      // Settings share the one application top bar, with Settings marked current.
+      await expect(fixture.page.getByRole("link", {name: "Settings", exact: true})).toHaveAttribute("aria-current", "page");
+      const settingsHeaderBox = await fixture.page.locator(".as-topbar").boundingBox();
       expect(settingsHeaderBox?.height).toBeLessThanOrEqual(48);
-      expect(settingsMarkBox).toMatchObject({height: 32, width: 32});
       const compactSettingsActions = [
         fixture.page.getByRole("button", {name: "Sign out"}),
-        fixture.page.getByRole("link", {name: "Back to review"}),
+        fixture.page.getByRole("navigation", {name: "Primary"}).getByRole("link", {name: "Review", exact: true}),
         fixture.page.getByRole("button", {name: "Save name"}),
         fixture.page.getByRole("button", {name: "Archive project"}),
       ];

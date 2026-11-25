@@ -5,11 +5,11 @@ export const refinementText = defineMessages({
     attention: {
       addressed: "Awaiting you",
       failed: "Failed dispatches",
+      thread: (artifact: string, body: string) => `“${body}” on ${artifact}`,
       title: "Needs you",
       unknown: "Unknown",
       versions: "New versions",
     },
-    activityGroup: (actor: string, verb: string, count: number) => `${actor} · ${count} × ${verb}`,
     awaiting: (count: number) => `Awaiting you (${count})`,
     awaitingEmpty: "No threads are awaiting you.",
     compare: {
@@ -40,11 +40,11 @@ export const refinementText = defineMessages({
     attention: {
       addressed: "待你確認",
       failed: "失敗的派工",
+      thread: (artifact, body) => `${artifact} 上的「${body}」`,
       title: "需要你處理",
       unknown: "未知",
       versions: "新版本",
     },
-    activityGroup: (actor, verb, count) => `${actor} · ${count} 次${verb}`,
     awaiting: (count) => `待你確認（${count}）`,
     awaitingEmpty: "沒有待你確認的留言串。",
     compare: {

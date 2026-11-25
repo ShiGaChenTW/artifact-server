@@ -66,7 +66,7 @@ test.describe("Linked folders", () => {
       const card = fixture.page.getByRole("region", {name: "site-output"});
       await expect(card.getByText("2 pending")).toBeVisible();
       await expect(card.getByText(output, {exact: true})).toBeVisible();
-      const inventory = fixture.page.getByRole("region", {name: /Files · site-output/u});
+      const inventory = fixture.page.getByRole("region", {name: /Files in site-output/u});
       await expect(inventory.getByRole("cell", {exact: true, name: "docs/guide.md"})).toBeVisible();
       await expectAccessible(fixture.page);
 
@@ -93,7 +93,7 @@ test.describe("Linked folders", () => {
       await inventory.getByRole("button", {name: "Relink"}).click();
       await expect(inventory.getByText("Looks like docs/guide.md moved to archive/guide.md.")).toBeHidden();
       await inventory.getByRole("button", {exact: true, name: "All"}).click();
-      await expect(inventory.getByRole("row").filter({hasText: "archive/guide.md"})).toContainText("Captured · In sync");
+      await expect(inventory.getByRole("row").filter({hasText: "archive/guide.md"})).toContainText(/Captured\s*In sync/u);
 
       await card.getByRole("button", {name: "Pause"}).click();
       await expect(card.getByText("Paused")).toBeVisible();
@@ -128,7 +128,7 @@ test.describe("Linked folders", () => {
       await fixture.page.getByRole("button", {name: "Link a folder"}).click();
       await fixture.page.getByLabel("Directory path").fill(output);
       await fixture.page.getByRole("button", {name: "Link", exact: true}).click();
-      const inventory = fixture.page.getByRole("region", {name: /Files · notes-output/u});
+      const inventory = fixture.page.getByRole("region", {name: /Files in notes-output/u});
       await inventory.getByRole("checkbox", {name: "Select alpha.md"}).click();
       await inventory.getByRole("button", {name: "Capture 1 selected"}).click();
       await expect(inventory.getByRole("listitem").filter({hasText: "alpha.md"})).toContainText("Captured");

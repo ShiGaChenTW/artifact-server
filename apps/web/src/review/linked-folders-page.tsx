@@ -3,7 +3,7 @@ import {useCallback, useEffect, useMemo, useState} from "react";
 import {
   api, type CaptureResult, type FolderLink, type InventoryEntry, type Project, type RelinkSuggestion, type Session,
 } from "@/api/client";
-import {ErrorPanel, StatePanel, StatusBadge} from "@/components/product";
+import {ErrorPanel, StatePanel} from "@/components/product";
 import {Button} from "@/components/ui/button";
 import {Checkbox} from "@/components/ui/checkbox";
 import {
@@ -115,8 +115,8 @@ export function LinkedFoldersPage({
           ? <StatePanel description={text.emptyDescription} title={text.emptyTitle} />
           : null}
         {links !== null && links.length > 0 ? (
-          <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
-            <ul aria-label={text.title} className="grid min-w-0 gap-3 lg:col-span-4">
+          <div className="mt-5 grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
+            <ul aria-label={text.title} className="as-linked-list min-w-0 lg:col-span-4">
               {links.map((link) => (
                 <li key={link.id}>
                   <LinkCard
@@ -235,7 +235,7 @@ function LinkCard({link, now, onChanged, onSelect, selected}: {
     <section
       aria-current={selected ? "true" : undefined}
       aria-label={name}
-      className={`grid gap-3 rounded-[var(--radius-card)] border bg-card p-4 ${selected ? "border-primary" : ""}`}
+      className="as-linked-row"
     >
       <div className="flex min-w-0 items-start justify-between gap-3">
         <button
@@ -246,9 +246,7 @@ function LinkCard({link, now, onChanged, onSelect, selected}: {
         >
           <span className="block truncate">{name}</span>
         </button>
-        <StatusBadge tone={link.state === "active" ? "primary" : link.state === "paused" ? "neutral" : "danger"}>
-          {text.states[link.state]}
-        </StatusBadge>
+        <span className="as-linked-row__state" data-state={link.state}>{text.states[link.state]}</span>
       </div>
       <p className="font-mono text-xs break-all text-muted-foreground">{link.path}</p>
       <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -387,10 +385,10 @@ function InventoryPanel({link, onChanged}: {
   };
 
   return (
-    <section aria-labelledby="linked-folder-inventory" className="grid gap-4 rounded-[var(--radius-card)] border bg-card p-4">
+    <section aria-labelledby="linked-folder-inventory" className="as-linked-inventory grid gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-heading text-base font-semibold" id="linked-folder-inventory">
-          {text.inventory} · {baseName(link.path)}
+          {text.inventoryOf(baseName(link.path))}
         </h2>
         <ToggleGroup
           aria-label={text.filterLabel}
@@ -412,7 +410,7 @@ function InventoryPanel({link, onChanged}: {
         </ToggleGroup>
       </div>
       {suggestions.length === 0 ? null : (
-        <div className="grid gap-2 rounded-[var(--radius-card)] border border-dashed p-3">
+        <div className="as-linked-note grid gap-2">
           <h3 className="text-sm font-semibold">{text.relinkTitle}</h3>
           {suggestions.map((suggestion) => (
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm" key={`${suggestion.artifactId}:${suggestion.toEntryId}`}>
@@ -439,7 +437,7 @@ function InventoryPanel({link, onChanged}: {
       </div>
       {error === null ? null : <p className="text-sm text-destructive" role="alert">{displayError(error)}</p>}
       {results.length === 0 ? null : (
-        <div aria-live="polite" className="grid gap-1 rounded-[var(--radius-card)] bg-muted p-3 text-sm">
+        <div aria-live="polite" className="as-linked-note grid gap-1 text-sm">
           <h3 className="font-semibold">{text.resultsTitle}</h3>
           <ul className="grid gap-1">
             {results.map((result) => (
@@ -447,7 +445,7 @@ function InventoryPanel({link, onChanged}: {
                 <span className="min-w-0 font-mono text-xs break-all">{result.relativePath ?? result.entryId}</span>
                 <span className={result.status === "refused" ? "text-destructive" : "text-muted-foreground"}>
                   {text.resultStatuses[result.status]}
-                  {result.status === "refused" && result.code !== null ? ` · ${result.code}` : ""}
+                  {result.status === "refused" && result.code !== null ? ` (${result.code})` : ""}
                 </span>
               </li>
             ))}
@@ -461,21 +459,21 @@ function InventoryPanel({link, onChanged}: {
           : <StatePanel description={text.noEntriesDescription} title={text.noEntriesTitle} />
       ) : null}
       {entries !== null && entries.length > 0 ? (
-        <div className="relative min-w-0 overflow-x-auto">
-          <table className="w-full min-w-[32rem] text-sm">
+        <div className="as-page-table relative min-w-0 overflow-x-auto">
+          <table className="w-full min-w-[28rem] text-sm">
             <thead>
-              <tr className="border-b text-left text-xs text-muted-foreground">
-                <th className="w-8 py-2" scope="col"><span className="sr-only">{text.selectEntry("")}</span></th>
-                <th className="py-2" scope="col">{text.pathColumn}</th>
-                <th className="py-2" scope="col">{text.stateColumn}</th>
-                <th className="py-2 text-right" scope="col">{text.sizeColumn}</th>
-                <th className="py-2 text-right" scope="col"><span className="sr-only">{text.actionsColumn}</span></th>
+              <tr className="text-left">
+                <th className="w-8" scope="col"><span className="sr-only">{text.selectEntry("")}</span></th>
+                <th scope="col">{text.pathColumn}</th>
+                <th scope="col">{text.stateColumn}</th>
+                <th className="text-right" scope="col">{text.sizeColumn}</th>
+                <th className="text-right" scope="col"><span className="sr-only">{text.actionsColumn}</span></th>
               </tr>
             </thead>
             <tbody>
               {entries.map((entry) => (
-                <tr className="border-b last:border-b-0" key={entry.id}>
-                  <td className="py-2">
+                <tr key={entry.id}>
+                  <td>
                     {entry.pending ? (
                       <Checkbox
                         aria-label={text.selectEntry(entry.relativePath)}
@@ -489,12 +487,12 @@ function InventoryPanel({link, onChanged}: {
                       />
                     ) : null}
                   </td>
-                  <td className="py-2 font-mono text-xs break-all">{entry.relativePath}</td>
-                  <td className="py-2 text-xs">{entryStatus(entry)}</td>
-                  <td className="py-2 text-right text-xs text-muted-foreground tabular-nums">
+                  <td className="as-linked-path font-mono text-xs">{entry.relativePath}</td>
+                  <td className="text-xs"><EntryStatus entry={entry} /></td>
+                  <td className="text-right text-xs text-muted-foreground tabular-nums">
                     {entry.size === null ? "—" : formatBytes(entry.size)}
                   </td>
-                  <td className="py-2 text-right">
+                  <td className="text-right">
                     {entry.state === "untracked" ? (
                       <Button
                         aria-label={text.previewEntry(entry.relativePath)}
@@ -520,15 +518,20 @@ function InventoryPanel({link, onChanged}: {
   );
 }
 
-function entryStatus(entry: InventoryEntry): string {
-  if (entry.state === "skipped") {
-    const reason = entry.skipReason;
-    return reason !== null && isSkipReason(reason) ? `${text.entryStates.skipped} · ${text.skipReasons[reason]}` : text.entryStates.skipped;
-  }
-  if (entry.state === "tracked" && entry.freshness !== null) {
-    return `${text.entryStates.tracked} · ${text.freshness[entry.freshness]}`;
-  }
-  return text.entryStates[entry.state];
+/** The entry's state, with why it was skipped or how it compares to its capture underneath. */
+function EntryStatus({entry}: {readonly entry: InventoryEntry}) {
+  const reason = entry.skipReason;
+  const detail = entry.state === "skipped" && reason !== null && isSkipReason(reason)
+    ? text.skipReasons[reason]
+    : entry.state === "tracked" && entry.freshness !== null
+      ? text.freshness[entry.freshness]
+      : null;
+  return (
+    <>
+      <span className="block">{text.entryStates[entry.state]}</span>
+      {detail === null ? null : <span className="block text-muted-foreground">{detail}</span>}
+    </>
+  );
 }
 
 function isSkipReason(reason: string): reason is keyof typeof text.skipReasons {

@@ -4,10 +4,9 @@ import {api, type InsightActivityEvent, type InsightWindow} from "@/api/client";
 import {ErrorPanel} from "@/components/product";
 import {Button} from "@/components/ui/button";
 import {Skeleton} from "@/components/ui/skeleton";
-import {refinementText} from "@/i18n/messages/review-refinements";
 import {dashboardText} from "@/i18n/messages/dashboard";
 import {formatRelativeTime, formatTimestamp} from "@/lib/presentation";
-import {activityActorLabel, activityLabel, artifactReviewHref} from "./dashboard-format.ts";
+import {activityActorLabel, activityGroupLabel, activityLabel, artifactReviewHref} from "./dashboard-format.ts";
 
 const text = dashboardText.activity;
 
@@ -112,13 +111,11 @@ export function ActivitySection({
                         />
                       );
                       if (repeated.length === 0) return row(first);
-                      const label = activityLabel(first.kind);
-                      const verb = (label.lead || label.trail).trim();
                       return (
                         <li className="as-activity__group" key={first.id}>
                           <details>
                             <summary>
-                              {refinementText.activityGroup(activityActorLabel(first.actor) ?? "", verb, repeated.length + 1)}
+                              {activityGroupLabel(first.kind, activityActorLabel(first.actor) ?? "", repeated.length + 1)}
                             </summary>
                             <ol className="as-activity as-activity--nested">{[first, ...repeated].map(row)}</ol>
                           </details>

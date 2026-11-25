@@ -4627,12 +4627,13 @@ body:has(.as-settings),
   box-shadow: none;
 }
 
+/* A state is a centered sheet sized to its words, not a full-height column. */
 .as-preview-panel__body > .as-preview-welcome,
 .as-preview-panel__body > .as-preview-state {
   background: var(--color-paper);
   border-radius: 2px;
   color: var(--color-ink);
-  height: 100%;
+  height: auto;
 }
 
 .as-drawer {
@@ -4915,7 +4916,26 @@ body:has(.as-settings),
   }
 
   .as-topbar__sep {
-    margin: 0 2px;
+    display: none;
+  }
+
+  /* The area links take a second row rather than a sliver that scrolls. */
+  .as-app {
+    grid-template-rows: auto auto minmax(0, 1fr) var(--as-bottom-height);
+  }
+
+  .as-topbar {
+    column-gap: 4px;
+    flex-wrap: wrap;
+    height: auto;
+    min-height: var(--as-bar-height);
+    padding-block: 6px;
+    row-gap: 2px;
+  }
+
+  .as-topbar__nav {
+    flex: 1 0 100%;
+    order: 1;
   }
 
   /* The project keeps a readable name; the area links scroll instead. */
@@ -5279,6 +5299,12 @@ body:has(.as-settings),
   font-weight: 500;
 }
 
+.as-files-table td.as-files-name {
+  min-width: 14rem;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .as-files-name__folder {
   color: var(--color-muted);
   font-family: var(--font-outlier);
@@ -5365,9 +5391,15 @@ body:has(.as-settings),
     display: none;
   }
 
-  .as-files-name {
+  .as-files-name,
+  .as-files-table td.as-files-name {
     min-width: 160px;
     white-space: normal !important;
+  }
+
+  /* The linked filter still narrows by source; the column gives way to the date. */
+  .as-files-col-source {
+    display: none;
   }
 
   .as-files-name__folder {

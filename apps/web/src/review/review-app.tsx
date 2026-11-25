@@ -1674,7 +1674,7 @@ function ArtifactReview({
 
       {focusMode ? null : (
         <div className="as-titlebar">
-          <h1>{previewName}</h1>
+          <h1 title={previewName}>{previewName}</h1>
           {selectedVersion === null ? null : (
             <button
               aria-controls="review-version-drawer"

@@ -584,7 +584,7 @@ function FileTable({
             <TableHead className="as-files-col-optional">{filesText.columns.kind}</TableHead>
             <TableHead className="as-files-col-optional">{filesText.columns.tags}</TableHead>
             <TableHead className="as-files-col-optional text-right">{filesText.columns.comments}</TableHead>
-            <TableHead>{filesText.columns.linked}</TableHead>
+            <TableHead className="as-files-col-source">{filesText.columns.linked}</TableHead>
             <TableHead className="as-files-col-optional text-right">{filesText.columns.size}</TableHead>
             <TableHead className="text-right">{filesText.columns.updated}</TableHead>
           </TableRow>
@@ -617,7 +617,7 @@ function FileTable({
               <TableCell className="as-files-col-optional">{folderText.kinds[item.fileKind]}</TableCell>
               <TableCell className="as-files-col-optional max-w-[12rem] truncate">{item.tags.join(", ")}</TableCell>
               <TableCell className="as-files-col-optional as-files-num">{item.commentCount}</TableCell>
-              <TableCell className="as-files-source" data-source={item.linked ?? "not-linked"}>
+              <TableCell className="as-files-source as-files-col-source" data-source={item.linked ?? "not-linked"}>
                 {item.linked === null ? filesText.linkedStates["not-linked"] : sourceFreshnessLabel(item.linked)}
               </TableCell>
               <TableCell className="as-files-col-optional as-files-num">{formatBytes(item.size)}</TableCell>
@@ -688,7 +688,7 @@ function FolderColumn({
               type="button"
             >
               <HugeiconsIcon aria-hidden="true" icon={Folder01Icon} strokeWidth={1.6} />
-              <span>{selectedProject.name} · {filesText.allFolders}</span>
+              <span>{filesText.wholeProject(selectedProject.name)}</span>
             </button>
             <FolderBranch onSelect={onSelectFolder} parentId={null} projectId={selectedProject.id} selected={selectedFolder} />
           </li>

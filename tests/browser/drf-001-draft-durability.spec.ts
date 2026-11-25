@@ -3,6 +3,7 @@ import {expect, test} from "@playwright/test";
 import {publishNew, publishVersion} from "../support/publishing.js";
 import {
   localLogin,
+  openDrawer,
   startBrowserFixture,
   stopBrowserFixture,
 } from "./browser-fixture.js";
@@ -58,7 +59,7 @@ test.describe("DRF-001 draft durability", () => {
       const reviewUrl =
         `${fixture.server.baseUrl}/review?project=prj_default&artifact=${artifactId}&version=${versionId}`;
       await page.goto(reviewUrl);
-      await page.getByRole("tab", {name: "Comments"}).click();
+      await openDrawer(page, "comments");
 
       const thread = page.getByRole("article").filter({hasText: "Seeded thread for the reply draft."});
       const newThread = page.getByLabel("Add a comment");
@@ -78,11 +79,13 @@ test.describe("DRF-001 draft durability", () => {
       await page.waitForTimeout(mirrorSettle);
 
       // In-app version switch and back: the drafts never left.
+      await openDrawer(page, "version");
       await page.getByRole("tab", {name: /Versions/u}).click();
       await page.getByRole("button", {name: /Version 1/u}).click();
+      await openDrawer(page, "version");
       await page.getByRole("tab", {name: /Versions/u}).click();
       await page.getByRole("button", {name: /Version 2/u}).click();
-      await page.getByRole("tab", {name: "Comments"}).click();
+      await openDrawer(page, "comments");
       await expect(page.getByLabel("Add a comment")).toHaveValue(newText);
       await expect(page.getByLabel("Reply", {exact: true})).toHaveValue(replyText);
       await expect(page.locator("[data-draft-marker]")).toHaveCount(2);
@@ -92,13 +95,13 @@ test.describe("DRF-001 draft durability", () => {
       await page.getByRole("button", {name: "Previous artifact"}).click();
       await expect(page).not.toHaveURL(new RegExp(`artifact=${artifactId}`, "u"));
       await page.getByRole("button", {name: "Next artifact"}).click();
-      await page.getByRole("tab", {name: "Comments"}).click();
+      await openDrawer(page, "comments");
       await expect(page.getByLabel("Add a comment")).toHaveValue(newText);
       await expect(page.getByLabel("Reply", {exact: true})).toHaveValue(replyText);
 
       // A full reload restores both from the mirror, marker included.
       await page.reload();
-      await page.getByRole("tab", {name: "Comments"}).click();
+      await openDrawer(page, "comments");
       await expect(page.getByLabel("Add a comment")).toHaveValue(newText);
       await expect(page.getByLabel("Reply", {exact: true})).toHaveValue(replyText);
       await expect(page.locator("[data-draft-marker]")).toHaveCount(2);
@@ -114,7 +117,7 @@ test.describe("DRF-001 draft durability", () => {
       await page.getByRole("button", {name: "Discard"}).click();
       await expect(page.getByLabel("Add a comment")).toHaveValue("");
       await page.reload();
-      await page.getByRole("tab", {name: "Comments"}).click();
+      await openDrawer(page, "comments");
       await expect(page.getByLabel("Add a comment")).toHaveValue("");
       await expect(page.getByLabel("Reply", {exact: true})).toHaveCount(0);
       await thread.focus();

@@ -1,12 +1,10 @@
-import {ArrowLeft01Icon, Moon02Icon, Sun03Icon} from "@hugeicons/core-free-icons";
-import {HugeiconsIcon} from "@hugeicons/react";
 import {useCallback, useEffect, useMemo, useState} from "react";
 
 import {
-  api, type CaptureResult, type FolderLink, type InventoryEntry, type Project, type RelinkSuggestion,
+  api, type CaptureResult, type FolderLink, type InventoryEntry, type Project, type RelinkSuggestion, type Session,
 } from "@/api/client";
-import {ErrorPanel, PageHeader, StatePanel, StatusBadge} from "@/components/product";
-import {Button, ButtonLink} from "@/components/ui/button";
+import {ErrorPanel, StatePanel, StatusBadge} from "@/components/product";
+import {Button} from "@/components/ui/button";
 import {Checkbox} from "@/components/ui/checkbox";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
@@ -15,10 +13,9 @@ import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
 import {NativeSelect} from "@/components/ui/native-select";
 import {ToggleGroup, ToggleGroupItem} from "@/components/ui/toggle-group";
-import {LanguageSwitch} from "@/i18n/language-switch";
 import {linkedFolderText as text} from "@/i18n/messages/linked-folders";
 import {displayError, formatBytes, formatRelativeTime} from "@/lib/presentation";
-import {ArtifactMark} from "./artifact-mark.tsx";
+import {AppTopBar, FilesSectionHeader} from "./app-shell.tsx";
 import {linkedFoldersPath} from "./review-routes.ts";
 
 type InventoryFilter = "pending" | "all" | "skipped";
@@ -32,10 +29,12 @@ interface Selection {
 
 /** Linked folders: link a directory, review its file list, and capture explicitly. */
 export function LinkedFoldersPage({
+  capabilities,
   onThemeChange,
   projects,
   theme,
 }: {
+  readonly capabilities: Session["capabilities"];
   readonly onThemeChange: () => void;
   readonly projects: readonly Project[];
   readonly theme: "dawn" | "moon";
@@ -70,37 +69,13 @@ export function LinkedFoldersPage({
   const selectedLink = links?.find((link) => link.id === selection.linkId) ?? links?.[0] ?? null;
 
   return (
-    <div className="as-settings">
-      <header className="as-settings__header">
-        <div className="as-settings__header-inner">
-          <a aria-label="Artifact Server" className="as-settings__brand" href="/review">
-            <span className="as-settings__brand-mark">
-              <ArtifactMark className="as-settings__mark" />
-            </span>
-            <span className="as-settings__brand-label">{text.title}</span>
-          </a>
-          <div className="as-settings__header-actions">
-            <LanguageSwitch />
-            <button
-              aria-label={theme === "moon" ? text.useLightTheme : text.useDarkTheme}
-              className="as-icon-button"
-              onClick={onThemeChange}
-              title={theme === "moon" ? text.useLightTheme : text.useDarkTheme}
-              type="button"
-            >
-              <HugeiconsIcon icon={theme === "moon" ? Sun03Icon : Moon02Icon} strokeWidth={1.8} />
-            </button>
-            <ButtonLink href="/review" size="sm" variant="outline">
-              <HugeiconsIcon data-icon="inline-start" icon={ArrowLeft01Icon} strokeWidth={1.8} />
-              {text.backToReview}
-            </ButtonLink>
-          </div>
-        </div>
-      </header>
-      <main className="mx-auto grid w-full max-w-[72rem] min-w-0 grid-cols-1 gap-6 px-4 pt-6 pb-24 sm:px-6" id="main-content">
-        <PageHeader
+    <div className="as-page">
+      <AppTopBar area="files" capabilities={capabilities} onThemeChange={onThemeChange} projectId={projectId} theme={theme} />
+      <div className="as-page__scroll">
+      <main className="as-page__wrap as-linked-page" id="main-content">
+        <FilesSectionHeader
           actions={(
-            <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
+            <>
               {activeProjects.length > 1 ? (
                 <NativeSelect
                   aria-label={text.project}
@@ -122,11 +97,15 @@ export function LinkedFoldersPage({
                   projectId={projectId}
                 />
               )}
-            </div>
+            </>
           )}
-          description={text.description}
+          capabilities={capabilities}
+          counts={{linkedPending: links?.filter((link) => !link.inTrash).reduce((sum, link) => sum + link.pendingCount, 0) ?? 0}}
+          current="linked"
+          projectId={projectId}
           title={text.title}
         />
+        <p className="as-page-description">{text.description}</p>
         {projectId === null ? <StatePanel description={text.noProjectDescription} title={text.noProjectTitle} /> : null}
         {error === null ? null : <ErrorPanel error={error} onRetry={() => setAttempt((value) => value + 1)} />}
         {links === null && error === null && projectId !== null
@@ -158,6 +137,7 @@ export function LinkedFoldersPage({
           </div>
         ) : null}
       </main>
+      </div>
     </div>
   );
 }

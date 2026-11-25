@@ -22,8 +22,9 @@ installDraftGuard();
 
 const initialTheme = readReviewTheme();
 document.documentElement.dataset["reviewTheme"] = initialTheme;
-// The colour palette is a theme class (src/themes/); Plannotator is the default.
-document.documentElement.classList.add("theme-plannotator");
+// The colour palette is a theme class (src/themes/); Reader is the active
+// theme. themes/plannotator.css stays available as the fallback palette.
+document.documentElement.classList.add("theme-reader");
 document.documentElement.classList.toggle("dark", initialTheme === "moon");
 
 const rootElement = document.querySelector("#review-root");

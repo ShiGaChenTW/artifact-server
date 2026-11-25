@@ -11,6 +11,8 @@ interface AttentionItem {
   readonly href: string;
   readonly id: string;
   readonly label: string;
+  /** The version a new-version item opens, shown as an instrument figure. */
+  readonly version?: number;
 }
 
 interface Attention {
@@ -62,7 +64,8 @@ async function loadProjectAttention(
       Date.parse(version.createdAt) > visitedAt ? [{
         href: `/review?${new URLSearchParams({artifact: artifact.id, project: projectId, version: version.id})}`,
         id: version.id,
-        label: `${artifact.name} · v${version.number}`,
+        label: artifact.name,
+        version: version.number,
       }] : [],
     );
     return {name: artifact.name, threads: threads.filter((thread) => wantedThreads.has(thread.id)), versions};
@@ -123,23 +126,26 @@ export function DashboardAttention({
   }, [principalId, projectId, projectIds]);
 
   return (
-    <section aria-busy={loading} aria-labelledby="dashboard-attention-title" className="grid gap-3 rounded-[var(--radius-card)] border border-border bg-card p-4 sm:p-6">
-      <h2 className="text-lg font-semibold" id="dashboard-attention-title">{text.title}</h2>
-      <dl className="grid gap-4 sm:grid-cols-3">
+    <section aria-busy={loading} aria-labelledby="dashboard-attention-title" className="as-dashboard-section">
+      <div className="as-dashboard-section__head">
+        <h2 id="dashboard-attention-title">{text.title}</h2>
+      </div>
+      <dl className="as-queue">
         {([
-          [text.addressed, attention?.addressed],
-          [text.versions, attention?.versions],
-          [text.failed, attention?.failed],
-        ] as const).map(([label, items]) => (
-          <div className="grid min-w-0 content-start gap-1 border-t border-border pt-3" key={label}>
-            <dt className="text-sm text-muted-foreground">{label}</dt>
-            <dd className="font-mono text-xl tabular-nums">{loading ? "…" : items?.length ?? text.unknown}</dd>
+          ["addressed", text.addressed, attention?.addressed],
+          ["versions", text.versions, attention?.versions],
+          ["failed", text.failed, attention?.failed],
+        ] as const).map(([kind, label, items]) => (
+          <div className="as-queue__group" data-kind={kind} key={kind}>
+            <dt>{label}</dt>
+            <dd className="as-queue__count">{loading ? "…" : items?.length ?? text.unknown}</dd>
             {loading || !items?.length ? null : (
-              <dd className="text-sm">
-                <ul className="grid max-h-40 gap-1 overflow-auto">
+              <dd className="as-queue__items">
+                <ul>
                   {items.map((item) => (
-                    <li className="min-w-0 break-words" key={item.id}>
-                      <a className="underline decoration-border underline-offset-4 hover:decoration-current" href={item.href}>{item.label}</a>
+                    <li key={item.id}>
+                      <a className="as-dashboard-link" href={item.href}>{item.label}</a>
+                      {item.version === undefined ? null : <span className="as-version-number">v{item.version}</span>}
                     </li>
                   ))}
                 </ul>

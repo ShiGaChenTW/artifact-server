@@ -10,7 +10,13 @@ import {
   type RunningTestServer, type TestInstallation,
 } from "../support/runtime-harness.js";
 import {startStubOidcProvider} from "../support/stub-oidc-provider.js";
-import {englishContext, localLogin, startBrowserFixture, stopBrowserFixture} from "./browser-fixture.js";
+import {
+  englishContext,
+  localLogin,
+  openDrawer,
+  startBrowserFixture,
+  stopBrowserFixture,
+} from "./browser-fixture.js";
 
 const folderResult = z.object({folder: z.object({id: z.string()})});
 const fileList = z.object({items: z.array(z.object({id: z.string(), name: z.string(), folderId: z.string().nullable()}).loose())});
@@ -28,7 +34,7 @@ test.describe("Files page", () => {
       await localLogin(fixture);
       const {page} = fixture;
 
-      await page.getByRole("link", {name: "Open files"}).click();
+      await page.getByRole("navigation", {name: "Primary"}).getByRole("link", {name: "Files"}).click();
       await expect(page).toHaveURL(/\/review\/files/u);
       await expect(page.getByRole("heading", {name: "Files", exact: true, level: 1})).toBeVisible();
       await expect(rows(page)).toHaveCount(4);
@@ -84,6 +90,7 @@ test.describe("Files page", () => {
       await expect(page.getByText("Purged Beta notes.")).toBeVisible();
 
       await page.goto(`${server.baseUrl}/review`);
+      await openDrawer(page, "catalog");
       const catalog = page.getByRole("complementary", {name: "Artifact catalog"});
       await expect(page.getByRole("navigation", {name: "Folders"})).toHaveCount(0);
       await catalog.getByRole("button", {name: "Reports", exact: true}).press("Enter");
@@ -148,7 +155,7 @@ test.describe("Files page", () => {
 
       await page.setViewportSize({width: 1280, height: 800});
       await page.goto(`${server.baseUrl}/review`);
-      await expect(page.getByRole("link", {name: "Open files"})).toBeVisible();
+      await expect(page.getByRole("navigation", {name: "Primary"}).getByRole("link", {name: "Files"})).toBeVisible();
       await expect(page.getByRole("navigation", {name: "Folders"})).toHaveCount(0);
     } finally {
       await stopBrowserFixture(fixture);
@@ -177,7 +184,7 @@ test.describe("Files page", () => {
         const page = await context.newPage();
         await page.goto(`${applicationOrigin}/auth/login?returnTo=%2Freview`);
         await expect(page.getByRole("heading", {name: "Remote fixture", exact: true})).toBeVisible();
-        await expect(page.getByRole("link", {name: "Open files"})).toHaveCount(0);
+        await expect(page.getByRole("navigation", {name: "Primary"}).getByRole("link", {name: "Files"})).toHaveCount(0);
         await page.goto(`${applicationOrigin}/review/files`);
         await expect(page.getByRole("heading", {name: "Remote fixture", exact: true})).toBeVisible();
         await expect(page.getByRole("heading", {name: "Files", exact: true})).toHaveCount(0);

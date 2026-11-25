@@ -7,6 +7,7 @@
 @import "@fontsource-variable/geist-mono/wght.css";
 @import "./hallmark/tokens.css";
 @import "./themes/plannotator.css";
+@import "./themes/reader.css";
 @import "./hallmark/base.css" layer(base);
 @import "./theme-tokens.css";
 

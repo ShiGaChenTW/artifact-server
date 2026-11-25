@@ -3,7 +3,6 @@ import {useEffect, useState} from "react";
 import {api, type InsightActivityEvent, type InsightWindow} from "@/api/client";
 import {ErrorPanel} from "@/components/product";
 import {Button} from "@/components/ui/button";
-import {Card, CardContent, CardDescription, CardHeader, CardTitle} from "@/components/ui/card";
 import {Skeleton} from "@/components/ui/skeleton";
 import {refinementText} from "@/i18n/messages/review-refinements";
 import {dashboardText} from "@/i18n/messages/dashboard";
@@ -28,11 +27,13 @@ export function ActivitySection({
   projectId,
   projectNames,
   window,
+  windowLabel,
 }: {
   readonly now: number;
   readonly projectId: string | null;
   readonly projectNames: ReadonlyMap<string, string>;
   readonly window: InsightWindow;
+  readonly windowLabel: string;
 }) {
   const [state, setState] = useState<ActivityState>({status: "loading"});
   const [attempt, setAttempt] = useState(0);
@@ -76,12 +77,12 @@ export function ActivitySection({
   };
 
   return (
-    <Card className="min-w-0">
-      <CardHeader>
-        <CardTitle>{text.title}</CardTitle>
-        <CardDescription>{text.description}</CardDescription>
-      </CardHeader>
-      <CardContent>
+    <section aria-labelledby="dashboard-activity-title" className="as-dashboard-section">
+      <div className="as-dashboard-section__head">
+        <h2 id="dashboard-activity-title">{text.title} <span className="as-dashboard-section__count">{windowLabel}</span></h2>
+        <span className="as-dashboard-section__aside">{text.description}</span>
+      </div>
+      <div>
         {state.status === "loading"
           ? (
             <div className="grid gap-3">
@@ -100,7 +101,7 @@ export function ActivitySection({
               {state.events.length === 0
                 ? <p className="text-sm text-muted-foreground">{text.empty}</p>
                 : (
-                  <ol aria-label={text.trail} className="ml-1 grid border-l border-[var(--color-rule-2)]">
+                  <ol aria-label={text.trail} className="as-activity">
                     {groupActivity(state.events).map(([first, ...repeated]) => {
                       const row = (event: InsightActivityEvent) => (
                         <ActivityRow
@@ -114,12 +115,12 @@ export function ActivitySection({
                       const label = activityLabel(first.kind);
                       const verb = (label.lead || label.trail).trim();
                       return (
-                        <li className="py-2.5 pl-6 text-sm" key={first.id}>
+                        <li className="as-activity__group" key={first.id}>
                           <details>
-                            <summary className="cursor-pointer font-medium">
+                            <summary>
                               {refinementText.activityGroup(activityActorLabel(first.actor) ?? "", verb, repeated.length + 1)}
                             </summary>
-                            <ol className="ml-2 border-l border-border">{[first, ...repeated].map(row)}</ol>
+                            <ol className="as-activity as-activity--nested">{[first, ...repeated].map(row)}</ol>
                           </details>
                         </li>
                       );
@@ -130,7 +131,7 @@ export function ActivitySection({
                 ? null
                 : (
                   <Button
-                    className="justify-self-start"
+                    className="justify-self-end"
                     disabled={state.loadingMore}
                     onClick={() => {
                       if (state.nextCursor !== null) void loadMore(state.nextCursor, state.events);
@@ -145,8 +146,8 @@ export function ActivitySection({
             </div>
           )
           : null}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 
@@ -175,48 +176,41 @@ function ActivityRow({
 }) {
   const actor = activityActorLabel(event.actor);
   const label = activityLabel(event.kind);
-  // Workbench: violet is a person, teal is an instrument (an agent, a key, the
-  // local token); an actor the record does not keep reads in muted ink.
-  const actorTone = event.actor?.kind === "human"
-    ? "text-[var(--color-accent)]"
-    : event.actor?.kind === "service"
-      ? "text-[var(--color-cool)]"
-      : "text-muted-foreground";
+  // Reader palette: an agent (a service principal) is an instrument and reads
+  // in the dispatch blue; a person and an unknown actor read in ink.
+  const actorTone = event.actor?.kind === "service" ? "as-activity__actor--agent" : "";
   return (
-    <li className="relative grid gap-1 py-2.5 pl-6 text-sm before:absolute before:top-[1rem] before:left-[-4px] before:size-[7px] before:rounded-full before:border before:border-[var(--color-rule-2)] before:bg-card sm:grid-cols-[6rem_minmax(0,1fr)] sm:gap-3">
+    <li className="as-activity__row">
+      <p className="as-activity__what">
+        {actor === null ? null : <span className={`as-activity__actor ${actorTone}`}>{actor} </span>}
+        {label.lead === "" ? null : <span>{label.lead}</span>}
+        {event.artifactId === null || event.artifactName === null
+          ? label.trail === ""
+            ? null
+            : <span>{` ${text.unknownArtifact}${label.trail}`}</span>
+          : (
+            <>
+              {" "}
+              <a className="as-dashboard-link" href={artifactReviewHref(event.projectId, event.artifactId)}>
+                {event.artifactName}
+              </a>
+              {event.versionNumber === null
+                ? null
+                : <span className="as-version-number"> v{event.versionNumber}</span>}
+              {label.trail === "" ? null : <span>{label.trail}</span>}
+            </>
+          )}
+        {projectName === null
+          ? null
+          : <span className="as-activity__project">{projectName}</span>}
+      </p>
       <time
-        className="pt-px text-xs text-[var(--color-cool)] tabular-nums"
+        className="as-activity__when"
         dateTime={event.occurredAt}
         title={formatTimestamp(event.occurredAt)}
       >
         {formatRelativeTime(event.occurredAt, now)}
       </time>
-      <p className="min-w-0">
-        {actor === null ? null : <span className={`font-medium ${actorTone}`}>{actor} </span>}
-        {label.lead === "" ? null : <span className="text-[var(--color-ink-2)]">{label.lead}</span>}
-        {event.artifactId === null || event.artifactName === null
-          ? label.trail === ""
-            ? null
-            : <span className="text-[var(--color-ink-2)]">{` ${text.unknownArtifact}${label.trail}`}</span>
-          : (
-            <>
-              {" "}
-              <a
-                className="text-foreground underline-offset-4 hover:text-[var(--color-accent)] hover:underline"
-                href={artifactReviewHref(event.projectId, event.artifactId)}
-              >
-                {event.artifactName}
-              </a>
-              {event.versionNumber === null
-                ? null
-                : <span className="font-mono text-[var(--color-cool)]"> v{event.versionNumber}</span>}
-              {label.trail === "" ? null : <span className="text-[var(--color-ink-2)]">{label.trail}</span>}
-            </>
-          )}
-        {projectName === null
-          ? null
-          : <span className="block text-sm text-muted-foreground">{projectName}</span>}
-      </p>
     </li>
   );
 }

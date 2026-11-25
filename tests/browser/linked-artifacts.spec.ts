@@ -19,7 +19,7 @@ import {
   type RunningTestServer,
   type TestInstallation,
 } from "../support/runtime-harness.js";
-import {localLogin, englishContext} from "./browser-fixture.js";
+import {englishContext, localLogin, openVersionTab} from "./browser-fixture.js";
 
 /** The link answer these tests read, mirroring the HTTP response shaping. */
 const linkedPublicationSchema = z.object({
@@ -173,6 +173,7 @@ test.describe("Linked artifacts", () => {
       await expect(
         fixture.page.getByRole("heading", {name: "Quarterly report"}),
       ).toBeVisible();
+      await openVersionTab(fixture.page, "Details");
       await expect(fixture.page.getByRole("heading", {name: "Linked source"})).toBeVisible();
       await expect(fixture.page.getByText(sourcePath, {exact: true})).toBeVisible();
       await expect(fixture.page.getByText("In sync", {exact: true})).toBeVisible();
@@ -222,6 +223,7 @@ test.describe("Linked artifacts", () => {
       await expect(
         fixture.page.getByRole("heading", {name: "Quarterly report"}),
       ).toBeVisible();
+      await openVersionTab(fixture.page, "Details");
       const liveButton = fixture.page.getByRole("button", {name: "Open live file"});
       await expect(liveButton).toBeVisible();
 

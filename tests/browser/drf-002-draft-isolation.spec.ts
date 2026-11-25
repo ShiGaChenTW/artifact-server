@@ -4,6 +4,7 @@ import {z} from "zod";
 import {publishNew} from "../support/publishing.js";
 import {
   localLogin,
+  openDrawer,
   startBrowserFixture,
   stopBrowserFixture,
 } from "./browser-fixture.js";
@@ -45,7 +46,7 @@ test.describe("DRF-002 draft isolation", () => {
       const reviewUrl =
         `${fixture.server.baseUrl}/review?project=prj_default&artifact=${artifactId}&version=${versionId}`;
       await page.goto(reviewUrl);
-      await page.getByRole("tab", {name: "Comments"}).click();
+      await openDrawer(page, "comments");
 
       const thread = page.getByRole("article").filter({hasText: "Seeded thread."});
 
@@ -66,7 +67,7 @@ test.describe("DRF-002 draft isolation", () => {
       }, [foreignKey]);
       page.on("dialog", (dialog) => void dialog.accept());
       await page.reload();
-      await page.getByRole("tab", {name: "Comments"}).click();
+      await openDrawer(page, "comments");
       await expect(page.getByLabel("Add a comment")).toHaveValue("");
       await expect(page.getByLabel("Reply", {exact: true})).toHaveValue("Reply-only draft.");
       expect(await page.evaluate(([key]) => localStorage.getItem(key ?? ""), [foreignKey]))
@@ -74,7 +75,7 @@ test.describe("DRF-002 draft isolation", () => {
 
       // A real sign-out (settings header, through api.logout) purges the
       // departing principal's drafts and nobody else's.
-      await page.getByRole("link", {name: "Open settings"}).click();
+      await page.getByRole("link", {name: "Settings", exact: true}).click();
       await page.getByRole("button", {name: "Sign out"}).click();
       // Sign-out purges the drafts and then navigates to /review. Reading
       // storage while that navigation is in flight destroys the evaluate's
@@ -86,7 +87,7 @@ test.describe("DRF-002 draft isolation", () => {
       ).catch(() => null)).toEqual([foreignKey]);
       await localLogin(fixture);
       await page.goto(reviewUrl);
-      await page.getByRole("tab", {name: "Comments"}).click();
+      await openDrawer(page, "comments");
       await expect(page.getByLabel("Reply", {exact: true})).toHaveCount(0);
       await thread.focus();
       await expect(thread.getByRole("button", {exact: true, name: "Reply"})).toBeVisible();

@@ -19,6 +19,7 @@ import {
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
+  ArrowRight02Icon,
   ArrowShrinkIcon,
   BookOpen01Icon,
   Cancel01Icon,
@@ -35,21 +36,14 @@ import {
   KeyboardIcon,
   LayoutLeftIcon,
   Link01Icon,
-  Moon02Icon,
-  PanelRightIcon,
+  MoreHorizontalIcon,
   RefreshIcon,
   Search01Icon,
-  DashboardSquare01Icon,
-  Delete02Icon,
-  FolderSyncIcon,
-  Settings02Icon,
-  Sun03Icon,
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {Dialog} from "@base-ui/react/dialog";
 import {Popover} from "@base-ui/react/popover";
-import {motion} from "motion/react";
 
 import {setDraftPrincipal, writeDraft} from "@/components/comments/comment-drafts";
 import {useCommentPoll} from "@/components/comments/comment-poll";
@@ -80,8 +74,9 @@ import {ReviewCommandPalette, ReviewKeyboardDialog} from "./review-command-palet
 import {ComparisonPreview} from "./comparison-preview.tsx";
 import {useCatalogOpenCounts} from "./use-catalog-open-counts.ts";
 import {reviewAppText} from "@/i18n/messages/review-app";
+import {readerText} from "@/i18n/messages/reader";
+import {AppTopBar} from "./app-shell.tsx";
 import artifactServerAnimationUrl from "./assets/artifact-server.svg";
-import {ArtifactMark} from "./artifact-mark.tsx";
 import {
   useReviewComments,
   ReviewCommentsInspector,
@@ -91,19 +86,12 @@ import { ReviewPreview } from "./review-preview.tsx";
 import {readReviewTheme, type ReviewTheme} from "./review-theme.ts";
 import {ReviewProjectPicker} from "./review-project-picker.tsx";
 import {
-  dashboardPath, filesPath, isDashboardPath, isFilesPath, isLinkedFoldersPath, isSettingsPath, isTrashPath,
-  linkedFoldersPath, trashPath,
+  isDashboardPath, isFilesPath, isLinkedFoldersPath, isSettingsPath, isTrashPath,
 } from "./review-routes.ts";
 import {FilesPage} from "./review-files.tsx";
-import {filesText} from "@/i18n/messages/files";
 import {MoveToTrashButton, TrashPage, useTrashUndo} from "./review-trash.tsx";
-import {trashText} from "@/i18n/messages/trash";
-import {linkedFolderText} from "@/i18n/messages/linked-folders";
 import {ReviewSettings} from "./review-settings.tsx";
-import {ReviewPanelEdge} from "./review-panel-edge.tsx";
 import {AgentLogos, ReviewShareControl} from "./review-share.tsx";
-import {useReviewPanelMotion} from "./use-review-panel-motion.ts";
-import {useReviewResizablePanel} from "./use-review-resizable-panel.ts";
 import {useWebmcp, type WebmcpBindings} from "./webmcp.tsx";
 
 // The linked-folders page loads only when someone opens it.
@@ -116,26 +104,24 @@ const DashboardPage = lazy(async () => ({
   default: (await import("../dashboard/dashboard-page.tsx")).DashboardPage,
 }));
 
-type InspectorTab = "activity" | "comments" | "compare" | "details" | "files" | "versions";
+type InspectorTab = "activity" | "compare" | "details" | "files" | "versions";
+type RightDrawer = "comments" | "version";
+type DrawerName = "catalog" | RightDrawer;
 type ArtifactListLoadResult = "failed" | "loaded" | "skipped";
 type CatalogCommentFilter = "all" | "with" | "without";
 type CatalogRefreshState = "complete" | "idle" | "loading";
 type CatalogSort = "comments" | "newest";
-const catalogDefaultWidth = 336;
-const catalogMinimumWidth = 240;
-const catalogMaximumWidth = 520;
-const inspectorDefaultWidth = 352;
-const inspectorMinimumWidth = 240;
-const inspectorMaximumWidth = 480;
-const inspectorGapPixels = 12;
 const catalogRefreshConfirmationMilliseconds = 1_600;
 
-function reviewShortcutBlocked(event: KeyboardEvent): boolean {
+function reviewShortcutBlocked(event: KeyboardEvent, allowInComposite: boolean): boolean {
   if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.altKey) {
     return true;
   }
 
   const target = event.target instanceof Element ? event.target : null;
+  // Keys pressed inside the preview never reach this window; a focused frame
+  // element itself is still the artifact's, not the shell's.
+  if (target instanceof HTMLIFrameElement) return true;
   if (target?.closest([
     "input",
     "textarea",
@@ -144,9 +130,7 @@ function reviewShortcutBlocked(event: KeyboardEvent): boolean {
     "[role='dialog']",
     "[role='listbox']",
     "[role='menu']",
-    "[role='radiogroup']",
-    "[role='slider']",
-    "[role='tablist']",
+    ...(allowInComposite ? [] : ["[role='radiogroup']", "[role='slider']", "[role='tablist']"]),
   ].join(", "))) {
     return true;
   }
@@ -324,11 +308,11 @@ function ReviewKeyboardShortcuts() {
         <dl>
           <div>
             <dt>{reviewAppText.shortcuts.previousArtifact}</dt>
-            <dd><kbd>K</kbd><span>{reviewAppText.shortcuts.or}</span><kbd>↑</kbd></dd>
+            <dd><kbd>←</kbd><span>{reviewAppText.shortcuts.or}</span><kbd>K</kbd><span>{reviewAppText.shortcuts.or}</span><kbd>↑</kbd></dd>
           </div>
           <div>
             <dt>{reviewAppText.shortcuts.nextArtifact}</dt>
-            <dd><kbd>J</kbd><span>{reviewAppText.shortcuts.or}</span><kbd>↓</kbd></dd>
+            <dd><kbd>→</kbd><span>{reviewAppText.shortcuts.or}</span><kbd>J</kbd><span>{reviewAppText.shortcuts.or}</span><kbd>↓</kbd></dd>
           </div>
         </dl>
       </section>
@@ -336,12 +320,16 @@ function ReviewKeyboardShortcuts() {
         <h3 id="review-shortcuts-layout">{reviewAppText.shortcuts.layout}</h3>
         <dl>
           <div>
-            <dt>{reviewAppText.shortcuts.catalog}</dt>
-            <dd><kbd>[</kbd></dd>
+            <dt>{readerText.shortcuts.catalog}</dt>
+            <dd><kbd>T</kbd><span>{reviewAppText.shortcuts.or}</span><kbd>[</kbd></dd>
           </div>
           <div>
-            <dt>{reviewAppText.shortcuts.inspectorOrComments}</dt>
-            <dd><kbd>]</kbd></dd>
+            <dt>{readerText.shortcuts.comments}</dt>
+            <dd><kbd>C</kbd><span>{reviewAppText.shortcuts.or}</span><kbd>]</kbd></dd>
+          </div>
+          <div>
+            <dt>{readerText.shortcuts.version}</dt>
+            <dd><kbd>V</kbd></dd>
           </div>
           <div>
             <dt>{reviewAppText.shortcuts.fullScreen}</dt>
@@ -499,6 +487,7 @@ export function ReviewApp() {
     return (
       <Suspense fallback={null}>
         <DashboardPage
+          filesCapabilities={session.capabilities}
           principalId={session.principal.id}
           onThemeChange={() => setTheme((current) => current === "moon" ? "dawn" : "moon")}
           projects={projects}
@@ -522,6 +511,7 @@ export function ReviewApp() {
   if (session.capabilities.trash && isTrashPath(window.location.pathname)) {
     return (
       <TrashPage
+        capabilities={session.capabilities}
         onThemeChange={() => setTheme((current) => current === "moon" ? "dawn" : "moon")}
         projects={projects}
         theme={theme}
@@ -533,6 +523,7 @@ export function ReviewApp() {
     return (
       <Suspense fallback={null}>
         <LinkedFoldersPage
+          capabilities={session.capabilities}
           onThemeChange={() => setTheme((current) => current === "moon" ? "dawn" : "moon")}
           projects={projects}
           theme={theme}
@@ -625,7 +616,7 @@ function ArtifactReview({
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<Error | null>(null);
   const [linkedThreadId, setLinkedThreadId] = useState(initialLocation.threadId ?? null);
-  const [inspectorTab, setInspectorTab] = useState<InspectorTab>(linkedThreadId === null ? "details" : "comments");
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("versions");
   const [keyboardDialog, setKeyboardDialog] = useState<"palette" | "shortcuts" | null>(null);
   const [sendRequested, setSendRequested] = useState(false);
   const keyboardReturnFocus = useRef<HTMLElement | null>(null);
@@ -634,8 +625,32 @@ function ArtifactReview({
       ? document.activeElement : null;
     setKeyboardDialog(dialog);
   }, []);
-  const [catalogOpen, setCatalogOpen] = useState(true);
-  const [inspectorOpen, setInspectorOpen] = useState(() => linkedThreadId !== null || readInitialInspectorOpen());
+  // The catalog, comments and version info are drawers, all closed at rest:
+  // the artifact owns the screen until the reader asks for a panel. A Review
+  // URL that names a thread opens the comments drawer on that thread.
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [rightDrawer, setRightDrawer] = useState<RightDrawer | null>(linkedThreadId === null ? null : "comments");
+  const drawerOrderRef = useRef<DrawerName[]>(linkedThreadId === null ? [] : ["comments"]);
+  const drawerTriggerRefs = {
+    catalog: useRef<HTMLButtonElement>(null),
+    comments: useRef<HTMLButtonElement>(null),
+    version: useRef<HTMLButtonElement>(null),
+  };
+  const drawerHeadingRefs = {
+    catalog: useRef<HTMLHeadingElement>(null),
+    comments: useRef<HTMLHeadingElement>(null),
+    version: useRef<HTMLHeadingElement>(null),
+  };
+  const pendingDrawerFocusRef = useRef<{readonly name: DrawerName; readonly target: "heading" | "trigger"} | null>(null);
+  const setDrawer = useCallback((name: DrawerName, open: boolean, moveFocus = false): void => {
+    if (name === "catalog") setCatalogOpen(open);
+    else setRightDrawer((current) => open ? name : current === name ? null : current);
+    const others = drawerOrderRef.current.filter((entry) =>
+      entry !== name && (!open || name === "catalog" || entry === "catalog"));
+    drawerOrderRef.current = open ? [...others, name] : others;
+    pendingDrawerFocusRef.current = moveFocus ? {name, target: open ? "heading" : "trigger"} : null;
+  }, []);
+  const openDrawer = useCallback((name: DrawerName): void => setDrawer(name, true), [setDrawer]);
   const [opening, setOpening] = useState(false);
   const [focusMode, setFocusMode] = useState(initialLocation.view === "focus");
   const [focusCommentsOpen, setFocusCommentsOpen] = useState(false);
@@ -667,40 +682,17 @@ function ArtifactReview({
   const commentsInspectorRef = useRef<ReviewCommentsInspectorHandle>(null);
   const catalogRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const catalogRequestGenerationRef = useRef(0);
-  const catalogWidthApplyRef = useRef<(width: number) => void>(() => undefined);
-  const inspectorWidthApplyRef = useRef<(width: number) => void>(() => undefined);
-  const catalogResize = useReviewResizablePanel({
-    apply: (width) => catalogWidthApplyRef.current(width),
-    defaultWidth: catalogDefaultWidth,
-    maxWidth: catalogMaximumWidth,
-    minWidth: catalogMinimumWidth,
-    onClick: () => setCatalogOpen(false),
-    onSnapClose: () => setCatalogOpen(false),
-    onSnapOpen: () => setCatalogOpen(true),
-    side: "left",
-    storageKey: "artifact-review-catalog-width",
-  });
-  const inspectorResize = useReviewResizablePanel({
-    apply: (width) => inspectorWidthApplyRef.current(width),
-    defaultWidth: inspectorDefaultWidth,
-    maxWidth: inspectorMaximumWidth,
-    minWidth: inspectorMinimumWidth,
-    onClick: () => setInspectorOpen(false),
-    onSnapClose: () => setInspectorOpen(false),
-    onSnapOpen: () => setInspectorOpen(true),
-    side: "right",
-    storageKey: "artifact-review-inspector-width",
-  });
-  const catalogMotion = useReviewPanelMotion(catalogOpen, catalogResize.width);
-  const inspectorMotion = useReviewPanelMotion(
-    inspectorOpen,
-    inspectorResize.width,
-    inspectorGapPixels,
-  );
+  // Focus follows a drawer opened or closed from the keyboard, once the
+  // drawer has rendered: to its heading on open, back to its trigger on close.
   useEffect(() => {
-    catalogWidthApplyRef.current = (width) => catalogMotion.width.set(width);
-    inspectorWidthApplyRef.current = (width) => inspectorMotion.width.set(width);
-  }, [catalogMotion.width, inspectorMotion.width]);
+    const pending = pendingDrawerFocusRef.current;
+    if (pending === null) return;
+    pendingDrawerFocusRef.current = null;
+    const target = pending.target === "heading"
+      ? drawerHeadingRefs[pending.name].current
+      : drawerTriggerRefs[pending.name].current;
+    target?.focus({preventScroll: true});
+  });
   const followCommentVersion = useCallback((versionId: string): void => {
     setDetailError(null);
     setSelectedVersionId(versionId);
@@ -1051,15 +1043,14 @@ function ArtifactReview({
       setSelectedPath(restored.path);
       setLinkedThreadId(restored.threadId ?? null);
       if (restored.threadId !== null && restored.threadId !== undefined) {
-        setInspectorTab("comments");
-        setInspectorOpen(true);
+        setDrawer("comments", true);
       }
       setFocusHint(false);
       setFocusMode(restored.view === "focus");
     };
     window.addEventListener("popstate", restoreLocation);
     return () => window.removeEventListener("popstate", restoreLocation);
-  }, [foldersAvailable]);
+  }, [foldersAvailable, setDrawer]);
 
   const openRawArtifact = async (): Promise<void> => {
     if (selectedArtifactId === null || selectedVersionId === null) return;
@@ -1343,11 +1334,20 @@ function ArtifactReview({
     setFocusHint(false);
     setFocusMode(false);
   }, [folderId, projectId, selectedArtifactId, selectedPath, selectedVersionId]);
+  const stepArtifact = useCallback((direction: -1 | 1): void => {
+    const next = catalogItems[selectedIndex + direction];
+    if (next !== undefined) {
+      selectArtifact(next.artifact.id, next.artifact.currentVersionId);
+    }
+  }, [catalogItems, selectArtifact, selectedIndex]);
   useEffect(() => {
     const handleReviewShortcut = (event: KeyboardEvent): void => {
-      if (homeOpen || keyboardDialog !== null || reviewShortcutBlocked(event)) return;
-
+      if (homeOpen || keyboardDialog !== null) return;
       const key = event.key.toLowerCase();
+      // Escape still closes a drawer from its own tab row; every other key
+      // there belongs to the tabs.
+      if (reviewShortcutBlocked(event, key === "escape")) return;
+
       if ((event.metaKey || event.ctrlKey) && !event.shiftKey && key === "k") {
         event.preventDefault();
         openKeyboardDialog("palette");
@@ -1361,9 +1361,13 @@ function ArtifactReview({
       }
       if (event.shiftKey) return;
       if (key === "escape") {
+        const lastDrawer = drawerOrderRef.current.at(-1);
         if (focusCommentsOpen) {
           event.preventDefault();
           setFocusCommentsOpen(false);
+        } else if (!focusMode && lastDrawer !== undefined) {
+          event.preventDefault();
+          setDrawer(lastDrawer, false, true);
         } else if (htmlAnnotateModeActive) {
           event.preventDefault();
           setHtmlAnnotateModeActive(false);
@@ -1381,37 +1385,42 @@ function ArtifactReview({
         return;
       }
 
-      if (key === "]") {
+      // C and its older alias ] toggle comments: the drawer, or the focus-mode
+      // comments panel while the viewer is full screen.
+      if (key === "c" || key === "]") {
         event.preventDefault();
         if (focusMode) setFocusCommentsOpen((current) => !current);
-        else setInspectorOpen((current) => !current);
+        else setDrawer("comments", rightDrawer !== "comments", true);
         return;
       }
 
-      if (key === "[" && !focusMode) {
+      // T and its older alias [ toggle the catalog drawer; V the version info.
+      if ((key === "t" || key === "[") && !focusMode) {
         event.preventDefault();
-        setCatalogOpen((current) => !current);
+        setDrawer("catalog", !catalogOpen, true);
+        return;
+      }
+      if (key === "v" && !focusMode) {
+        event.preventDefault();
+        setDrawer("version", rightDrawer !== "version", true);
         return;
       }
 
-      const direction = key === "j" || key === "arrowdown"
+      const direction = key === "j" || key === "arrowdown" || key === "arrowright"
         ? 1
-        : key === "k" || key === "arrowup"
+        : key === "k" || key === "arrowup" || key === "arrowleft"
           ? -1
           : 0;
       if (direction === 0) return;
 
       event.preventDefault();
-      const next = catalogItems[selectedIndex + direction];
-      if (next !== undefined) {
-        selectArtifact(next.artifact.id, next.artifact.currentVersionId);
-      }
+      stepArtifact(direction);
     };
 
     window.addEventListener("keydown", handleReviewShortcut);
     return () => window.removeEventListener("keydown", handleReviewShortcut);
   }, [
-    catalogItems,
+    catalogOpen,
     enterFocusMode,
     exitFocusMode,
     focusCommentsOpen,
@@ -1420,9 +1429,10 @@ function ArtifactReview({
     htmlAnnotateModeActive,
     keyboardDialog,
     openKeyboardDialog,
-    selectArtifact,
-    selectedIndex,
+    rightDrawer,
     selectedVersionId,
+    setDrawer,
+    stepArtifact,
   ]);
   const hideFocusControls = (event: ReactMouseEvent<HTMLButtonElement>): void => {
     previewPanelRef.current?.focus({preventScroll: true});
@@ -1483,14 +1493,27 @@ function ArtifactReview({
     setHomeOpen(true);
   };
 
+  const previewName = visibleArtifactName(details?.artifact.name ?? selectedItem?.artifact.name ?? "Artifact Server");
+  const previewPath = selectedVersion === null ? null : selectedPath ?? selectedVersion.manifest.entryPath;
+  const previewBytes = selectedVersion?.manifest.entries.reduce((sum, entry) => sum + entry.size, 0) ?? 0;
+  const viewingCurrent = selectedVersion !== null && details !== null
+    && selectedVersion.version.id === details.artifact.currentVersionId;
+  const sendToAgent = (): void => {
+    if (focusMode) setFocusCommentsOpen(true);
+    else openDrawer("comments");
+    setSendRequested(true);
+  };
+  const toggleDrawer = (name: DrawerName): void => {
+    setDrawer(name, name === "catalog" ? !catalogOpen : rightDrawer !== name);
+  };
+
   return (
     <div
       className="as-app"
       data-catalog-open={catalogOpen}
       data-focus-mode={focusMode}
       data-html-annotate-mode={htmlAnnotateModeActive}
-      data-inspector-open={inspectorOpen}
-      data-panel-resizing={catalogResize.isDragging || inspectorResize.isDragging}
+      data-right-drawer={rightDrawer ?? "none"}
     >
       <a className="as-skip-link" href="#review-preview">{reviewAppText.home.skipLink}</a>
 
@@ -1610,288 +1633,370 @@ function ArtifactReview({
           }} />
       )}
 
-      {!focusMode && catalogMotion.mounted ? (
-        <div className="as-panel-assembly" data-side="left">
-          <motion.div
-            className="as-panel-clip as-catalog-clip"
-            data-side="left"
-            style={{width: catalogMotion.outerWidth}}
-          >
-            <motion.aside
-              aria-label={reviewAppText.catalog.label}
-              className="as-catalog"
-              style={{width: catalogMotion.width}}
-            >
-        <header className="as-pane-header as-catalog__header">
-          <div className="as-catalog__context">
-            <a
-              aria-label="Artifact Server"
-              className="as-catalog__brand"
-              href="/review"
-              onClick={returnHome}
-              title="Artifact Server"
-            >
-              <ArtifactMark className="as-catalog__brand-mark" />
-            </a>
-            <ReviewProjectPicker
-              canCreate={canManageProjects}
-              onCreate={onCreateProject}
-              onSelect={selectProject}
-              projects={projects}
-              selectedProjectId={projectId}
-            />
-          </div>
-          <div className="as-catalog__header-actions">
-            <IconButton
-              label={theme === "moon" ? reviewAppText.catalog.useLightTheme : reviewAppText.catalog.useDarkTheme}
-              onClick={onThemeChange}
-            >
-              <HugeiconsIcon icon={theme === "moon" ? Sun03Icon : Moon02Icon} strokeWidth={1.8} />
-            </IconButton>
-            <a
-              aria-label={reviewAppText.catalog.openDashboard}
-              className="as-icon-button"
-              href={selectedProject === null
-                ? dashboardPath
-                : `${dashboardPath}?${new URLSearchParams({project: selectedProject.id})}`}
-              title={reviewAppText.catalog.openDashboard}
-            >
-              <HugeiconsIcon icon={DashboardSquare01Icon} strokeWidth={1.8} />
-            </a>
-            {session.capabilities.fileOverview ? (
-              <a
-                aria-label={filesText.open}
-                className="as-icon-button"
-                href={selectedProject === null ? filesPath : `${filesPath}?${new URLSearchParams({project: selectedProject.id})}`}
-                title={filesText.open}
-              >
-                <HugeiconsIcon icon={Folder01Icon} strokeWidth={1.8} />
-              </a>
-            ) : null}
-            {session.capabilities.trash ? (
-              <a aria-label={trashText.open} className="as-icon-button" href={trashPath} title={trashText.open}>
-                <HugeiconsIcon icon={Delete02Icon} strokeWidth={1.8} />
-              </a>
-            ) : null}
-            {session.capabilities.linkedFolders ? (
-              <a
-                aria-label={linkedFolderText.openPage}
-                className="as-icon-button"
-                href={selectedProject === null
-                  ? linkedFoldersPath
-                  : `${linkedFoldersPath}?${new URLSearchParams({project: selectedProject.id})}`}
-                title={linkedFolderText.openPage}
-              >
-                <HugeiconsIcon icon={FolderSyncIcon} strokeWidth={1.8} />
-              </a>
-            ) : null}
-            <a
-              aria-label={reviewAppText.catalog.openSettings}
-              className="as-icon-button"
-              href={selectedProject === null
-                ? "/review/settings/projects"
-                : `/review/settings/projects/${encodeURIComponent(selectedProject.id)}`}
-              title={reviewAppText.catalog.openSettings}
-            >
-              <HugeiconsIcon icon={Settings02Icon} strokeWidth={1.8} />
-            </a>
-            <IconButton
-              keyShortcuts="["
-              label={reviewAppText.catalog.collapse}
-              onClick={() => setCatalogOpen(false)}
-              title={reviewAppText.catalog.collapseTitle}
-            >
-              <HugeiconsIcon icon={LayoutLeftIcon} strokeWidth={1.8} />
-            </IconButton>
-          </div>
-        </header>
-
-        <div className="as-catalog__tools">
-          <div className="as-search-group">
-            <label className="as-search">
-              <span className="as-visually-hidden">{reviewAppText.catalog.searchLabel}</span>
-              <HugeiconsIcon aria-hidden="true" icon={Search01Icon} strokeWidth={1.8} />
-              <input
-                onChange={(event) => setQuery(event.currentTarget.value)}
-                placeholder={reviewAppText.catalog.searchPlaceholder}
-                type="search"
-                value={query}
+      {focusMode ? null : (
+        <AppTopBar
+          area="review"
+          capabilities={session.capabilities}
+          leading={(
+            <>
+              <ReviewProjectPicker
+                canCreate={canManageProjects}
+                onCreate={onCreateProject}
+                onSelect={selectProject}
+                projects={projects}
+                selectedProjectId={projectId}
               />
-              {query === "" ? null : (
-                <button aria-label={reviewAppText.catalog.clearSearch} onClick={() => setQuery("")} type="button">
-                  <HugeiconsIcon icon={Cancel01Icon} strokeWidth={1.8} />
-                </button>
-              )}
-            </label>
-            <div className="as-catalog-query-controls">
-              <CatalogFilters
-                commentFilter={catalogCommentFilter}
-                knownTags={catalogKnownTags}
-                onCommentFilterChange={setCatalogCommentFilter}
-                onTagFiltersChange={setCatalogTagFilters}
-                tagFilters={catalogTagFilters}
-              />
-              <label>
-                <span className="as-visually-hidden">{reviewAppText.catalog.sortLabel}</span>
-                <select
-                  aria-label={reviewAppText.catalog.sortLabel}
-                  onChange={(event) => {
-                    const value = event.currentTarget.value;
-                    if (value === "comments" || value === "newest") setCatalogSort(value);
-                  }}
-                  value={catalogSort}
-                >
-                  <option value="newest">{reviewAppText.catalog.newestFirst}</option>
-                  <option value="comments">{reviewAppText.catalog.mostComments}</option>
-                </select>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        {foldersAvailable ? (
-          <div className="as-folder-toolbar">
-            {folderId !== null && listError !== null ? (
-              <button className="as-button as-button--ghost" type="button" onClick={() => navigateFolder(null)}>{folderText.root}</button>
-            ) : <FolderBreadcrumbs root={folderText.root} folders={breadcrumbs} onNavigate={navigateFolder} />}
-            {canManageArtifacts && !listLoading && listError === null ? (
-              <div className="as-inspector-actions">
-                <button className="as-button as-button--secondary" type="button"
-                  onClick={() => setFolderDialog({kind: "create", parent: folderId})}>{folderText.newFolder}</button>
-                <CurrentFolderActions folder={breadcrumbs.at(-1)} onAction={setFolderDialog} />
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        <div className="as-catalog__list">
-          {listError === null ? null : (
-            <InlineState description={displayError(listError)} title={reviewAppText.catalog.unavailableTitle} tone="error" />
-          )}
-          {listLoading && items.length === 0 ? (
-            <InlineState description={reviewAppText.catalog.loadingDescription} title={reviewAppText.catalog.loadingTitle} />
-          ) : null}
-          {folders.map(({id, name}) => (
-            <button className="as-artifact-card as-folder-row" key={id} type="button" onClick={() => navigateFolder(id)}>
-              <HugeiconsIcon aria-hidden="true" icon={Folder01Icon} size={16} />
-              <span className="as-artifact-card__name">{name}</span>
-              <span aria-hidden="true">›</span>
-            </button>
-          ))}
-          {!listLoading && listError === null && catalogItems.length === 0 && folders.length === 0 ? (
-            <InlineState
-              description={
-                query !== "" || catalogCommentFilter !== "all" || catalogTagFilters.length > 0
-                  ? reviewAppText.catalog.noMatchDescription
-                  : folderId === null ? reviewAppText.catalog.emptyDescription : folderText.emptyDescription
-              }
-              title={
-                query !== "" || catalogCommentFilter !== "all" || catalogTagFilters.length > 0
-                  ? reviewAppText.catalog.noMatchTitle
-                  : folderId === null ? reviewAppText.catalog.emptyTitle : folderText.empty
-              }
-            />
-          ) : null}
-          {catalogItems.map(({artifact, commentCount, versionCount}) => {
-            const openCount = catalogOpenCounts.get(artifact.id) ?? 0;
-            const timestamp = artifact.createdAt;
-            const now = Date.now();
-            const relative = Date.parse(timestamp) <= now ? formatRelativeTime(timestamp, now) : timestamp;
-            return (
               <button
-                aria-current={artifact.id === selectedArtifactId ? "true" : undefined}
-                className="as-artifact-card"
-                data-selected={artifact.id === selectedArtifactId}
-                key={artifact.id}
-                onClick={() => selectArtifact(artifact.id, artifact.currentVersionId)}
+                aria-controls="review-catalog-drawer"
+                aria-expanded={catalogOpen}
+                aria-keyshortcuts="T ["
+                className="as-bar-button as-catalog-trigger"
+                onClick={() => toggleDrawer("catalog")}
+                ref={drawerTriggerRefs.catalog}
                 type="button"
               >
-                <span className="as-artifact-card__title-row">
-                  <span className="as-artifact-card__name">{visibleArtifactName(artifact.name)}</span>
-                  {artifact.accessSetting === "account_required" ? null : <AccessPill access={artifact.accessSetting} />}
-                </span>
-                <span className="as-artifact-card__meta">
-                  <span className="as-artifact-card__history">
-                    <span>{reviewAppText.catalog.versionCount(versionCount)}</span>
-                    <time aria-label={timestamp} dateTime={timestamp} title={timestamp}>{relative}</time>
-                  </span>
-                  {foldersAvailable && duplicateNames.has(artifact.name)
-                    ? <span title={artifact.id}>{folderText.kinds[artifact.fileKind ?? "other"]} · {compactId(artifact.id.slice(4))}</span>
-                    : null}
-                  {openCount === 0 && commentCount === 0 ? null : (
-                    <span className="as-artifact-card__counts">
-                      <span aria-label={openCount > 0 ? refinementText.openThreads(openCount) : undefined}
-                        data-open-count={openCount > 0 ? openCount : undefined}>
-                        <HugeiconsIcon aria-hidden="true" icon={Comment01Icon} strokeWidth={1.8} />
-                        {openCount > 0 ? openCount : reviewAppText.catalog.commentCount(commentCount)}
-                      </span>
-                    </span>
-                  )}
-                </span>
+                <HugeiconsIcon aria-hidden="true" icon={LayoutLeftIcon} strokeWidth={1.6} />
+                {readerText.catalog.trigger}
+                <span className="as-bar-button__count">{catalogItems.length}</span>
+                <kbd aria-hidden="true">T</kbd>
               </button>
-            );
-          })}
-        </div>
+            </>
+          )}
+          onBrandClick={returnHome}
+          onThemeChange={onThemeChange}
+          projectId={selectedProject?.id ?? null}
+          settingsHref={selectedProject === null
+            ? "/review/settings/projects"
+            : `/review/settings/projects/${encodeURIComponent(selectedProject.id)}`}
+          theme={theme}
+        />
+      )}
 
-        <footer className="as-app-footer as-catalog__footer">
+      {focusMode ? null : (
+        <div className="as-titlebar">
+          <h1>{previewName}</h1>
+          {selectedVersion === null ? null : (
+            <button
+              aria-controls="review-version-drawer"
+              aria-expanded={rightDrawer === "version"}
+              aria-keyshortcuts="V"
+              className="as-bar-button as-bar-button--line as-version-trigger"
+              onClick={() => toggleDrawer("version")}
+              ref={drawerTriggerRefs.version}
+              title={readerText.title.versionLabel(selectedVersion.version.number)}
+              type="button"
+            >
+              <span className="as-version-trigger__number">v{selectedVersion.version.number}</span>
+              <span className="as-version-trigger__tag">
+                {viewingCurrent ? readerText.title.currentVersion : readerText.title.earlierVersion}
+              </span>
+              <kbd aria-hidden="true">V</kbd>
+            </button>
+          )}
+          <span className="as-titlebar__grow" />
+          {previewAnnotatable && canComment ? (
+            <div aria-label={readerText.title.modeGroup} className="as-segmented" role="group">
+              <button
+                aria-pressed={htmlAnnotateModeActive}
+                className="as-bar-button"
+                onClick={() => setHtmlAnnotateModeActive(true)}
+                title={reviewAppText.focus.annotateModeDescription}
+                type="button"
+              >
+                {reviewAppText.focus.annotateMode}
+              </button>
+              <button
+                aria-pressed={!htmlAnnotateModeActive}
+                className="as-bar-button"
+                onClick={() => setHtmlAnnotateModeActive(false)}
+                title={reviewAppText.focus.interactModeDescription}
+                type="button"
+              >
+                {reviewAppText.focus.interactMode}
+              </button>
+            </div>
+          ) : null}
+          <ReviewShareControl
+            details={details}
+            key={`header-share-${details?.artifact.id ?? "empty"}`}
+            onArtifactChanged={updateArtifact}
+            selectedPath={selectedPath}
+            selectedVersion={selectedVersion}
+            triggerClassName="as-bar-button as-bar-button--line"
+          />
           <button
-            aria-busy={catalogRefreshState === "loading"}
-            aria-label={reviewAppText.catalog.refreshLabel}
-            className="as-catalog-refresh"
-            data-state={catalogRefreshState}
-            disabled={listLoading}
-            onClick={() => void refreshArtifacts()}
-            title={reviewAppText.catalog.refreshLabel}
+            aria-controls="review-comments-drawer"
+            aria-expanded={rightDrawer === "comments"}
+            aria-keyshortcuts="C ]"
+            className="as-bar-button as-bar-button--line"
+            onClick={() => toggleDrawer("comments")}
+            ref={drawerTriggerRefs.comments}
             type="button"
           >
-            <HugeiconsIcon
-              aria-hidden="true"
-              className="as-catalog-refresh__icon"
-              icon={catalogRefreshState === "complete" ? Tick02Icon : RefreshIcon}
-              strokeWidth={1.8}
-            />
-            <span>
-              {catalogRefreshState === "loading"
-                ? reviewAppText.catalog.refreshing
-                : catalogRefreshState === "complete"
-                  ? reviewAppText.catalog.refreshed
-                  : reviewAppText.catalog.refresh}
-            </span>
+            <HugeiconsIcon aria-hidden="true" icon={Comment01Icon} strokeWidth={1.6} />
+            {readerText.title.comments}
+            <span className="as-bar-button__count">{openCommentCount}</span>
+            <kbd aria-hidden="true">C</kbd>
           </button>
-          <span aria-live="polite" className="as-visually-hidden">
-            {catalogRefreshState === "loading"
-              ? reviewAppText.catalog.refreshingAnnouncement
-              : catalogRefreshState === "complete"
-                ? reviewAppText.catalog.refreshedAnnouncement
-                : ""}
-          </span>
-          <div className="as-catalog__footer-actions">
-            {nextCursor === null ? null : (
-              <button disabled={listLoading} onClick={() => void loadArtifacts(nextCursor, false)} type="button">
-                {listLoading ? reviewAppText.general.loading : reviewAppText.general.loadMore}
-              </button>
-            )}
-            <button aria-label={reviewAppText.shortcuts.title} aria-keyshortcuts="?"
-              className="as-keyboard-shortcuts__trigger" onClick={() => openKeyboardDialog("shortcuts")}
-              title={reviewAppText.shortcuts.title} type="button">
-              <HugeiconsIcon aria-hidden="true" icon={KeyboardIcon} strokeWidth={1.8} />
-            </button>
-          </div>
-        </footer>
-            </motion.aside>
-          </motion.div>
-          {catalogOpen ? (
-            <ReviewPanelEdge
-              label={reviewAppText.catalog.widthLabel}
-              onCollapse={() => setCatalogOpen(false)}
-              resize={catalogResize}
-              side="left"
-            />
-          ) : null}
+          <button
+            className="as-bar-button as-bar-button--accent"
+            disabled={selectedVersion === null}
+            onClick={sendToAgent}
+            type="button"
+          >
+            <HugeiconsIcon aria-hidden="true" icon={ArrowRight02Icon} strokeWidth={1.6} />
+            {readerText.title.sendToAgent}
+          </button>
+          <Popover.Root>
+            <Popover.Trigger
+              render={(
+                <button
+                  aria-label={readerText.title.more}
+                  className="as-bar-button as-bar-button--line as-bar-button--icon"
+                  title={readerText.title.more}
+                  type="button"
+                />
+              )}
+            >
+              <HugeiconsIcon aria-hidden="true" icon={MoreHorizontalIcon} strokeWidth={1.6} />
+            </Popover.Trigger>
+            <Popover.Portal>
+              <Popover.Positioner align="end" className="as-more-positioner" sideOffset={6}>
+                <Popover.Popup aria-label={readerText.title.more} className="as-more-menu">
+                  <button
+                    className="as-more-menu__item"
+                    disabled={selectedVersionId === null || opening}
+                    onClick={() => void openRawArtifact()}
+                    type="button"
+                  >
+                    <HugeiconsIcon aria-hidden="true" icon={ExternalLinkIcon} strokeWidth={1.6} />
+                    {opening ? reviewAppText.preview.opening : reviewAppText.preview.openRaw}
+                  </button>
+                  <ReviewDownloadControl className="as-more-menu__item" download={download} />
+                  <button
+                    aria-keyshortcuts="F"
+                    className="as-more-menu__item"
+                    disabled={selectedVersionId === null}
+                    onClick={enterFocusMode}
+                    type="button"
+                  >
+                    <HugeiconsIcon aria-hidden="true" icon={FullScreenIcon} strokeWidth={1.6} />
+                    {reviewAppText.preview.fullScreen}
+                  </button>
+                  <button
+                    aria-keyshortcuts="?"
+                    className="as-more-menu__item"
+                    onClick={() => openKeyboardDialog("shortcuts")}
+                    type="button"
+                  >
+                    <HugeiconsIcon aria-hidden="true" icon={KeyboardIcon} strokeWidth={1.6} />
+                    {reviewAppText.shortcuts.title}
+                  </button>
+                </Popover.Popup>
+              </Popover.Positioner>
+            </Popover.Portal>
+          </Popover.Root>
         </div>
-      ) : null}
+      )}
 
       <main className="as-workspace">
+        {focusMode ? null : (
+          <aside
+            aria-label={reviewAppText.catalog.label}
+            className="as-drawer as-drawer--left as-catalog"
+            hidden={!catalogOpen}
+            id="review-catalog-drawer"
+          >
+            <header className="as-drawer__head">
+              <h2 id="review-catalog-drawer-title" ref={drawerHeadingRefs.catalog} tabIndex={-1}>{readerText.catalog.title}</h2>
+              <IconButton
+                keyShortcuts="T"
+                label={readerText.catalog.close}
+                onClick={() => setDrawer("catalog", false, true)}
+              >
+                <HugeiconsIcon icon={Cancel01Icon} strokeWidth={1.6} />
+              </IconButton>
+            </header>
+            {catalogOpen ? (
+              <>
+                <div className="as-catalog__tools">
+                  <div className="as-search-group">
+                    <label className="as-search">
+                      <span className="as-visually-hidden">{reviewAppText.catalog.searchLabel}</span>
+                      <HugeiconsIcon aria-hidden="true" icon={Search01Icon} strokeWidth={1.8} />
+                      <input
+                        onChange={(event) => setQuery(event.currentTarget.value)}
+                        placeholder={reviewAppText.catalog.searchPlaceholder}
+                        type="search"
+                        value={query}
+                      />
+                      {query === "" ? null : (
+                        <button aria-label={reviewAppText.catalog.clearSearch} onClick={() => setQuery("")} type="button">
+                          <HugeiconsIcon icon={Cancel01Icon} strokeWidth={1.8} />
+                        </button>
+                      )}
+                    </label>
+                    <div className="as-catalog-query-controls">
+                      <CatalogFilters
+                        commentFilter={catalogCommentFilter}
+                        knownTags={catalogKnownTags}
+                        onCommentFilterChange={setCatalogCommentFilter}
+                        onTagFiltersChange={setCatalogTagFilters}
+                        tagFilters={catalogTagFilters}
+                      />
+                      <label>
+                        <span className="as-visually-hidden">{reviewAppText.catalog.sortLabel}</span>
+                        <select
+                          aria-label={reviewAppText.catalog.sortLabel}
+                          onChange={(event) => {
+                            const value = event.currentTarget.value;
+                            if (value === "comments" || value === "newest") setCatalogSort(value);
+                          }}
+                          value={catalogSort}
+                        >
+                          <option value="newest">{reviewAppText.catalog.newestFirst}</option>
+                          <option value="comments">{reviewAppText.catalog.mostComments}</option>
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {foldersAvailable ? (
+                  <div className="as-folder-toolbar">
+                    {folderId !== null && listError !== null ? (
+                      <button className="as-button as-button--ghost" type="button" onClick={() => navigateFolder(null)}>{folderText.root}</button>
+                    ) : <FolderBreadcrumbs root={folderText.root} folders={breadcrumbs} onNavigate={navigateFolder} />}
+                    {canManageArtifacts && !listLoading && listError === null ? (
+                      <div className="as-inspector-actions">
+                        <button className="as-button as-button--secondary" type="button"
+                          onClick={() => setFolderDialog({kind: "create", parent: folderId})}>{folderText.newFolder}</button>
+                        <CurrentFolderActions folder={breadcrumbs.at(-1)} onAction={setFolderDialog} />
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                <div className="as-catalog__list">
+                  {listError === null ? null : (
+                    <InlineState description={displayError(listError)} title={reviewAppText.catalog.unavailableTitle} tone="error" />
+                  )}
+                  {listLoading && items.length === 0 ? (
+                    <InlineState description={reviewAppText.catalog.loadingDescription} title={reviewAppText.catalog.loadingTitle} />
+                  ) : null}
+                  {folders.map(({id, name}) => (
+                    <button className="as-artifact-card as-folder-row" key={id} type="button" onClick={() => navigateFolder(id)}>
+                      <HugeiconsIcon aria-hidden="true" icon={Folder01Icon} size={16} />
+                      <span className="as-artifact-card__name">{name}</span>
+                      <span aria-hidden="true">›</span>
+                    </button>
+                  ))}
+                  {!listLoading && listError === null && catalogItems.length === 0 && folders.length === 0 ? (
+                    <InlineState
+                      description={
+                        query !== "" || catalogCommentFilter !== "all" || catalogTagFilters.length > 0
+                          ? reviewAppText.catalog.noMatchDescription
+                          : folderId === null ? reviewAppText.catalog.emptyDescription : folderText.emptyDescription
+                      }
+                      title={
+                        query !== "" || catalogCommentFilter !== "all" || catalogTagFilters.length > 0
+                          ? reviewAppText.catalog.noMatchTitle
+                          : folderId === null ? reviewAppText.catalog.emptyTitle : folderText.empty
+                      }
+                    />
+                  ) : null}
+                  {catalogItems.map(({artifact, commentCount, versionCount}) => {
+                    const openCount = catalogOpenCounts.get(artifact.id) ?? 0;
+                    const timestamp = artifact.createdAt;
+                    const now = Date.now();
+                    const relative = Date.parse(timestamp) <= now ? formatRelativeTime(timestamp, now) : timestamp;
+                    return (
+                      <button
+                        aria-current={artifact.id === selectedArtifactId ? "true" : undefined}
+                        className="as-artifact-card"
+                        data-selected={artifact.id === selectedArtifactId}
+                        key={artifact.id}
+                        onClick={() => selectArtifact(artifact.id, artifact.currentVersionId)}
+                        type="button"
+                      >
+                        <span className="as-artifact-card__title-row">
+                          <span className="as-artifact-card__name">{visibleArtifactName(artifact.name)}</span>
+                          {artifact.accessSetting === "account_required" ? null : <AccessPill access={artifact.accessSetting} />}
+                        </span>
+                        <span className="as-artifact-card__meta">
+                          <span className="as-artifact-card__history">
+                            <span>{reviewAppText.catalog.versionCount(versionCount)}</span>
+                            <time aria-label={timestamp} dateTime={timestamp} title={timestamp}>{relative}</time>
+                          </span>
+                          {foldersAvailable && duplicateNames.has(artifact.name)
+                            ? <span title={artifact.id}>{folderText.kinds[artifact.fileKind ?? "other"]} · {compactId(artifact.id.slice(4))}</span>
+                            : null}
+                          {openCount === 0 && commentCount === 0 ? null : (
+                            <span className="as-artifact-card__counts">
+                              <span aria-label={openCount > 0 ? refinementText.openThreads(openCount) : undefined}
+                                data-open-count={openCount > 0 ? openCount : undefined}>
+                                <HugeiconsIcon aria-hidden="true" icon={Comment01Icon} strokeWidth={1.8} />
+                                {openCount > 0 ? openCount : reviewAppText.catalog.commentCount(commentCount)}
+                              </span>
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <footer className="as-app-footer as-catalog__footer">
+                  <button
+                    aria-busy={catalogRefreshState === "loading"}
+                    aria-label={reviewAppText.catalog.refreshLabel}
+                    className="as-catalog-refresh"
+                    data-state={catalogRefreshState}
+                    disabled={listLoading}
+                    onClick={() => void refreshArtifacts()}
+                    title={reviewAppText.catalog.refreshLabel}
+                    type="button"
+                  >
+                    <HugeiconsIcon
+                      aria-hidden="true"
+                      className="as-catalog-refresh__icon"
+                      icon={catalogRefreshState === "complete" ? Tick02Icon : RefreshIcon}
+                      strokeWidth={1.8}
+                    />
+                    <span>
+                      {catalogRefreshState === "loading"
+                        ? reviewAppText.catalog.refreshing
+                        : catalogRefreshState === "complete"
+                          ? reviewAppText.catalog.refreshed
+                          : reviewAppText.catalog.refresh}
+                    </span>
+                  </button>
+                  <span aria-live="polite" className="as-visually-hidden">
+                    {catalogRefreshState === "loading"
+                      ? reviewAppText.catalog.refreshingAnnouncement
+                      : catalogRefreshState === "complete"
+                        ? reviewAppText.catalog.refreshedAnnouncement
+                        : ""}
+                  </span>
+                  <div className="as-catalog__footer-actions">
+                    {nextCursor === null ? null : (
+                      <button disabled={listLoading} onClick={() => void loadArtifacts(nextCursor, false)} type="button">
+                        {listLoading ? reviewAppText.general.loading : reviewAppText.general.loadMore}
+                      </button>
+                    )}
+                    <button aria-label={reviewAppText.shortcuts.title} aria-keyshortcuts="?"
+                      className="as-keyboard-shortcuts__trigger" onClick={() => openKeyboardDialog("shortcuts")}
+                      title={reviewAppText.shortcuts.title} type="button">
+                      <HugeiconsIcon aria-hidden="true" icon={KeyboardIcon} strokeWidth={1.8} />
+                    </button>
+                  </div>
+                </footer>
+              </>
+            ) : null}
+          </aside>
+        )}
+
         <section
+          aria-label={readerText.preview}
           className="as-preview-panel"
           id="review-preview"
           ref={previewPanelRef}
@@ -2033,93 +2138,6 @@ function ArtifactReview({
               </aside>
             </>
           ) : null}
-          <header className="as-pane-header as-preview-header">
-            <div className="as-preview-header__identity">
-              {!catalogOpen ? (
-                <IconButton
-                  keyShortcuts="["
-                  label={reviewAppText.preview.openCatalog}
-                  onClick={() => setCatalogOpen(true)}
-                  title={reviewAppText.preview.openCatalogTitle}
-                >
-                  <HugeiconsIcon icon={LayoutLeftIcon} strokeWidth={1.8} />
-                </IconButton>
-              ) : null}
-              <h1>{visibleArtifactName(details?.artifact.name ?? selectedItem?.artifact.name ?? "Artifact Server")}</h1>
-              {selectedVersion === null ? null : (
-                <span className="as-preview-header__version">v{selectedVersion.version.number}</span>
-              )}
-            </div>
-            <div className="as-preview-header__actions">
-              {previewAnnotatable && canComment ? (
-                <button
-                  aria-label={htmlAnnotateModeActive
-                    ? reviewAppText.focus.annotateModeDescription
-                    : reviewAppText.focus.interactModeDescription}
-                  aria-pressed={htmlAnnotateModeActive}
-                  className="as-button as-button--ghost"
-                  data-active={htmlAnnotateModeActive}
-                  onClick={() => setHtmlAnnotateModeActive((active) => !active)}
-                  title={htmlAnnotateModeActive
-                    ? reviewAppText.focus.annotateModeDescription
-                    : reviewAppText.focus.interactModeDescription}
-                  type="button"
-                >
-                  <HugeiconsIcon aria-hidden="true" icon={Edit02Icon} strokeWidth={1.8} />
-                  <span className="as-button__label">
-                    {htmlAnnotateModeActive ? reviewAppText.focus.annotateMode : reviewAppText.focus.interactMode}
-                  </span>
-                </button>
-              ) : null}
-              <button
-                aria-label={opening ? reviewAppText.preview.openingRaw : reviewAppText.preview.openRaw}
-                className="as-button as-button--ghost as-preview-header__raw"
-                disabled={selectedVersionId === null || opening}
-                onClick={() => void openRawArtifact()}
-                type="button"
-              >
-                <HugeiconsIcon aria-hidden="true" icon={ExternalLinkIcon} strokeWidth={1.8} />
-                <span className="as-button__label">
-                  {opening ? reviewAppText.preview.opening : reviewAppText.preview.openRaw}
-                </span>
-              </button>
-              <ReviewShareControl
-                details={details}
-                key={`header-share-${details?.artifact.id ?? "empty"}`}
-                onArtifactChanged={updateArtifact}
-                selectedPath={selectedPath}
-                selectedVersion={selectedVersion}
-                triggerClassName="as-button as-button--ghost"
-              />
-              <ReviewDownloadControl
-                className="as-button as-button--ghost"
-                download={download}
-              />
-              <button
-                aria-label={reviewAppText.preview.fullScreen}
-                aria-keyshortcuts="F"
-                className="as-button as-button--ghost"
-                disabled={selectedVersionId === null}
-                onClick={enterFocusMode}
-                title={reviewAppText.preview.fullScreenTitle}
-                type="button"
-              >
-                <HugeiconsIcon aria-hidden="true" icon={FullScreenIcon} strokeWidth={1.8} />
-                <span className="as-button__label">{reviewAppText.preview.fullScreen}</span>
-              </button>
-              {!inspectorOpen ? (
-                <IconButton
-                  keyShortcuts="]"
-                  label={reviewAppText.preview.openInspector}
-                  onClick={() => setInspectorOpen(true)}
-                  title={reviewAppText.preview.openInspectorTitle}
-                >
-                  <HugeiconsIcon icon={PanelRightIcon} strokeWidth={1.8} />
-                </IconButton>
-              ) : null}
-            </div>
-          </header>
-
           <div className="as-preview-panel__body" data-preview-kind={previewKind}>
             {detailError === null ? null : (
               <div className="as-preview-error" role="alert">{displayError(detailError)}</div>
@@ -2148,11 +2166,10 @@ function ArtifactReview({
                 onSelectAnnotation={(threadId) => {
                   comments.selectThread(threadId);
                   if (threadId !== null) {
-                    setInspectorTab("comments");
                     if (focusMode) {
                       setFocusCommentsOpen(true);
                     } else {
-                      setInspectorOpen(true);
+                      openDrawer("comments");
                     }
                   }
                 }}
@@ -2168,11 +2185,8 @@ function ArtifactReview({
                       versionId: selectedVersionId,
                     }, body);
                   }
-                  if (saved) {
-                    setInspectorTab("comments");
-                    if (!focusMode) {
-                      setInspectorOpen(true);
-                    }
+                  if (saved && !focusMode) {
+                    openDrawer("comments");
                   }
                   return saved;
                 }}
@@ -2187,197 +2201,159 @@ function ArtifactReview({
               />
             )}
           </div>
-
-          <footer className="as-app-footer as-preview-footer">
-            <div className="as-preview-footer__nav">
-              <IconButton
-                disabled={selectedIndex <= 0}
-                keyShortcuts="K ArrowUp"
-                label={reviewAppText.footer.previousArtifact}
-                onClick={() => {
-                  const previous = catalogItems[selectedIndex - 1];
-                  if (previous !== undefined) {
-                    selectArtifact(previous.artifact.id, previous.artifact.currentVersionId);
-                  }
-                }}
-                title={reviewAppText.footer.previousArtifactTitle}
-              >
-                <HugeiconsIcon icon={ArrowLeft01Icon} strokeWidth={1.8} />
-              </IconButton>
-              <span className="as-tabular">
-                {selectedIndex < 0 ? "0" : selectedIndex + 1} / {catalogItems.length}
-              </span>
-              <IconButton
-                disabled={selectedIndex < 0 || selectedIndex >= catalogItems.length - 1}
-                keyShortcuts="J ArrowDown"
-                label={reviewAppText.footer.nextArtifact}
-                onClick={() => {
-                  const next = catalogItems[selectedIndex + 1];
-                  if (next !== undefined) {
-                    selectArtifact(next.artifact.id, next.artifact.currentVersionId);
-                  }
-                }}
-                title={reviewAppText.footer.nextArtifactTitle}
-              >
-                <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={1.8} />
-              </IconButton>
-            </div>
-            <div className="as-preview-footer__status">
-              <span className="as-preview-footer__metadata">
-                {selectedVersion === null
-                  ? reviewAppText.footer.noVersion
-                  : reviewAppText.footer.versionSummary(
-                    selectedVersion.manifest.entries.length,
-                    selectedVersion.version.routingMode.toUpperCase(),
-                  )}
-              </span>
-              <button
-                className="as-button as-preview-footer__reload"
-                disabled={comments.loading || selectedVersion === null}
-                onClick={() => void (
-                  commentsInspectorRef.current?.reload() ?? comments.reload()
-                )}
-                type="button"
-              >
-                <HugeiconsIcon aria-hidden="true" icon={RefreshIcon} strokeWidth={1.8} />
-                {comments.loading ? reviewAppText.general.loading : reviewAppText.footer.reload}
-              </button>
-            </div>
-          </footer>
         </section>
 
-        {!focusMode && inspectorMotion.mounted ? (
-          <div className="as-panel-assembly" data-side="right">
-            {inspectorOpen ? (
-              <ReviewPanelEdge
-                label={reviewAppText.inspector.widthLabel}
-                onCollapse={() => setInspectorOpen(false)}
-                resize={inspectorResize}
-                side="right"
-              />
-            ) : null}
-            <motion.div
-              className="as-panel-clip as-inspector-clip"
-              data-side="right"
-              style={{width: inspectorMotion.outerWidth}}
-            >
-              <motion.aside
-                aria-label={reviewAppText.inspector.label}
-                className="as-inspector"
-                style={{width: inspectorMotion.width}}
-              >
-          <header className="as-pane-header as-inspector__header">
-            <div aria-label={reviewAppText.inspector.label} className="as-tabs" role="tablist">
-              <InspectorTabButton active={inspectorTab === "comments"} count={openCommentCount} label={reviewAppText.inspector.commentsTab} onClick={() => setInspectorTab("comments")} tab="comments" />
-              <InspectorTabButton active={inspectorTab === "details"} label={reviewAppText.inspector.detailsTab} onClick={() => setInspectorTab("details")} tab="details" />
-              <InspectorTabButton active={inspectorTab === "files"} count={selectedVersion?.manifest.entries.length ?? 0} label={reviewAppText.inspector.filesTab} onClick={() => setInspectorTab("files")} tab="files" />
-              <InspectorTabButton active={inspectorTab === "versions"} count={versions.length} label={reviewAppText.inspector.versionsTab} onClick={() => setInspectorTab("versions")} tab="versions" />
-              <InspectorTabButton active={inspectorTab === "activity"} label={reviewAppText.inspector.activityTab} onClick={() => setInspectorTab("activity")} tab="activity" />
-              {comparison === null ? null : (
-                <InspectorTabButton active={inspectorTab === "compare"} label={reviewAppText.inspector.compareTab} onClick={() => setInspectorTab("compare")} tab="compare" />
-              )}
-            </div>
-            <IconButton
-              keyShortcuts="]"
-              label={reviewAppText.inspector.close}
-              onClick={() => setInspectorOpen(false)}
-              title={reviewAppText.inspector.closeTitle}
-            >
-              <HugeiconsIcon icon={Cancel01Icon} strokeWidth={1.8} />
-            </IconButton>
-          </header>
-          <div
-            aria-labelledby={`review-inspector-tab-${inspectorTab}`}
-            className="as-inspector__body"
-            id="review-inspector-panel"
-            role="tabpanel"
+        {focusMode ? null : (
+          <aside
+            aria-labelledby="review-comments-drawer-title"
+            className="as-drawer as-drawer--right as-comments-drawer"
+            hidden={rightDrawer !== "comments"}
+            id="review-comments-drawer"
           >
-            {details === null || selectedVersion === null ? (
-              <InlineState description={reviewAppText.inspector.nothingDescription} title={reviewAppText.inspector.nothingTitle} />
-            ) : inspectorTab === "details" ? (
-              <DetailsInspector
-                canManage={canManageArtifacts}
-                details={details}
-                linkedArtifacts={session.capabilities.linkedArtifacts}
-                trashAvailable={session.capabilities.trash}
-                placement={foldersAvailable ? (
-                  <ArtifactFolderLocation artifact={details.artifact}
-                    key={`${details.artifact.id}:${details.artifact.folderId ?? "root"}:${folderChanges}`}
-                    projectName={selectedProject?.name ?? folderText.root}>
-                    {canManageArtifacts ? (
-                      <>
-                        <button className="as-button" type="button" onClick={() =>
-                          setFolderDialog({kind: "move", subject: {kind: "artifact", record: details.artifact}})}>
-                          {folderText.move}
-                        </button>
-                        <button className="as-button" type="button" onClick={() =>
-                          setFolderDialog({kind: "rename", subject: {kind: "artifact", record: details.artifact}})}>
-                          {folderText.rename}
-                        </button>
-                      </>
-                    ) : null}
-                  </ArtifactFolderLocation>
-                ) : null}
-                onCapture={captureLinkedArtifact}
-                onOpenLive={openLinkedArtifact}
-                onTagsChange={changeTags}
-                onTombstone={tombstoneArtifact}
-                version={selectedVersion}
-              />
-            ) : inspectorTab === "comments" ? (
-              <ReviewCommentsInspector
-                canComment={canComment}
-                canDeleteAny={canDeleteAnyComment}
-                linkedThreadId={linkedThreadId}
-                onSendRequestHandled={() => setSendRequested(false)}
-                principalId={session.principal.id}
-                ref={commentsInspectorRef}
-                sendRequested={sendRequested}
-                session={comments}
-                versionId={selectedVersionId}
-              />
-            ) : inspectorTab === "files" ? (
-              <FilesInspector
-                onSelect={selectManifestPath}
-                selectedPath={selectedPath ?? selectedVersion.manifest.entryPath}
-                version={selectedVersion}
-              />
-            ) : inspectorTab === "versions" ? (
-              <VersionsInspector
-                canManage={canManageArtifacts}
-                comparisonLoading={comparisonLoading}
-                currentVersionId={details.artifact.currentVersionId}
-                onCompare={compareVersions}
-                onMakeCurrent={makeVersionCurrent}
-                onSelect={(versionId) => {
-                  setDetailError(null);
-                  setSelectedVersionId(versionId);
-                  setSelectedPath(null);
-                }}
-                selectedVersionId={selectedVersionId}
-                versions={versions}
-              />
-            ) : inspectorTab === "activity" ? (
-              <ActivityInspector
-                actions={actions}
-                error={activityError}
-                loading={activityLoading}
-                nextCursor={actionNextCursor}
-                onLoadMore={() => void loadActions(actionNextCursor)}
-              />
-            ) : (
-              <ComparisonInspector
-                comparison={comparison}
-                error={comparisonError}
-                onViewChange={setSideBySide}
-                sideBySide={sideBySide}
-              />
-            )}
-          </div>
-              </motion.aside>
-            </motion.div>
-          </div>
-        ) : null}
+            <header className="as-drawer__head">
+              <h2 id="review-comments-drawer-title" ref={drawerHeadingRefs.comments} tabIndex={-1}>
+                {readerText.drawer.comments}
+              </h2>
+              <IconButton
+                keyShortcuts="C"
+                label={readerText.drawer.closeComments}
+                onClick={() => setDrawer("comments", false, true)}
+              >
+                <HugeiconsIcon icon={Cancel01Icon} strokeWidth={1.6} />
+              </IconButton>
+            </header>
+            {rightDrawer === "comments" ? (
+              <div className="as-drawer__body as-inspector__body">
+                {details === null || selectedVersion === null ? (
+                  <InlineState description={reviewAppText.inspector.nothingDescription} title={reviewAppText.inspector.nothingTitle} />
+                ) : (
+                  <ReviewCommentsInspector
+                    canComment={canComment}
+                    canDeleteAny={canDeleteAnyComment}
+                    linkedThreadId={linkedThreadId}
+                    onSendRequestHandled={() => setSendRequested(false)}
+                    principalId={session.principal.id}
+                    ref={commentsInspectorRef}
+                    sendRequested={sendRequested}
+                    session={comments}
+                    versionId={selectedVersionId}
+                  />
+                )}
+              </div>
+            ) : null}
+          </aside>
+        )}
+
+        {focusMode ? null : (
+          <aside
+            aria-labelledby="review-version-drawer-title"
+            className="as-drawer as-drawer--right as-inspector"
+            hidden={rightDrawer !== "version"}
+            id="review-version-drawer"
+          >
+            <header className="as-drawer__head">
+              <h2 id="review-version-drawer-title" ref={drawerHeadingRefs.version} tabIndex={-1}>
+                {readerText.drawer.version}
+              </h2>
+              <IconButton
+                keyShortcuts="V"
+                label={readerText.drawer.closeVersion}
+                onClick={() => setDrawer("version", false, true)}
+              >
+                <HugeiconsIcon icon={Cancel01Icon} strokeWidth={1.6} />
+              </IconButton>
+            </header>
+            {rightDrawer === "version" ? (
+              <>
+                <div aria-label={readerText.drawer.versionTabs} className="as-tabs" role="tablist">
+                  <InspectorTabButton active={inspectorTab === "versions"} count={versions.length} label={reviewAppText.inspector.versionsTab} onClick={() => setInspectorTab("versions")} tab="versions" />
+                  <InspectorTabButton active={inspectorTab === "details"} label={reviewAppText.inspector.detailsTab} onClick={() => setInspectorTab("details")} tab="details" />
+                  <InspectorTabButton active={inspectorTab === "files"} count={selectedVersion?.manifest.entries.length ?? 0} label={reviewAppText.inspector.filesTab} onClick={() => setInspectorTab("files")} tab="files" />
+                  <InspectorTabButton active={inspectorTab === "activity"} label={reviewAppText.inspector.activityTab} onClick={() => setInspectorTab("activity")} tab="activity" />
+                  {comparison === null ? null : (
+                    <InspectorTabButton active={inspectorTab === "compare"} label={reviewAppText.inspector.compareTab} onClick={() => setInspectorTab("compare")} tab="compare" />
+                  )}
+                </div>
+                <div
+                  aria-labelledby={`review-inspector-tab-${inspectorTab}`}
+                  className="as-drawer__body as-inspector__body"
+                  id="review-inspector-panel"
+                  role="tabpanel"
+                >
+                  {details === null || selectedVersion === null ? (
+                    <InlineState description={reviewAppText.inspector.nothingDescription} title={reviewAppText.inspector.nothingTitle} />
+                  ) : inspectorTab === "details" ? (
+                    <DetailsInspector
+                      canManage={canManageArtifacts}
+                      details={details}
+                      linkedArtifacts={session.capabilities.linkedArtifacts}
+                      trashAvailable={session.capabilities.trash}
+                      placement={foldersAvailable ? (
+                        <ArtifactFolderLocation artifact={details.artifact}
+                          key={`${details.artifact.id}:${details.artifact.folderId ?? "root"}:${folderChanges}`}
+                          projectName={selectedProject?.name ?? folderText.root}>
+                          {canManageArtifacts ? (
+                            <>
+                              <button className="as-button" type="button" onClick={() =>
+                                setFolderDialog({kind: "move", subject: {kind: "artifact", record: details.artifact}})}>
+                                {folderText.move}
+                              </button>
+                              <button className="as-button" type="button" onClick={() =>
+                                setFolderDialog({kind: "rename", subject: {kind: "artifact", record: details.artifact}})}>
+                                {folderText.rename}
+                              </button>
+                            </>
+                          ) : null}
+                        </ArtifactFolderLocation>
+                      ) : null}
+                      onCapture={captureLinkedArtifact}
+                      onOpenLive={openLinkedArtifact}
+                      onTagsChange={changeTags}
+                      onTombstone={tombstoneArtifact}
+                      version={selectedVersion}
+                    />
+                  ) : inspectorTab === "files" ? (
+                    <FilesInspector
+                      onSelect={selectManifestPath}
+                      selectedPath={selectedPath ?? selectedVersion.manifest.entryPath}
+                      version={selectedVersion}
+                    />
+                  ) : inspectorTab === "versions" ? (
+                    <VersionsInspector
+                      canManage={canManageArtifacts}
+                      comparisonLoading={comparisonLoading}
+                      currentVersionId={details.artifact.currentVersionId}
+                      onCompare={compareVersions}
+                      onMakeCurrent={makeVersionCurrent}
+                      onSelect={(versionId) => {
+                        setDetailError(null);
+                        setSelectedVersionId(versionId);
+                        setSelectedPath(null);
+                      }}
+                      selectedVersionId={selectedVersionId}
+                      versions={versions}
+                    />
+                  ) : inspectorTab === "activity" ? (
+                    <ActivityInspector
+                      actions={actions}
+                      error={activityError}
+                      loading={activityLoading}
+                      nextCursor={actionNextCursor}
+                      onLoadMore={() => void loadActions(actionNextCursor)}
+                    />
+                  ) : (
+                    <ComparisonInspector
+                      comparison={comparison}
+                      error={comparisonError}
+                      onViewChange={setSideBySide}
+                      sideBySide={sideBySide}
+                    />
+                  )}
+                </div>
+              </>
+            ) : null}
+          </aside>
+        )}
         {keyboardDialog === null ? null : (
           <ReviewKeyboardDialog
             close={() => setKeyboardDialog(null)}
@@ -2389,21 +2365,14 @@ function ArtifactReview({
                 commands={[
                   {label: refinementText.palette.switchVersion, run: () => {
                     exitFocusMode();
-                    setInspectorOpen(true);
+                    openDrawer("version");
                     setInspectorTab("versions");
                   }},
                   {label: refinementText.palette.annotate, run: () => setHtmlAnnotateModeActive(true)},
-                  {label: refinementText.palette.send, run: () => {
-                    if (focusMode) setFocusCommentsOpen(true);
-                    else {
-                      setInspectorOpen(true);
-                      setInspectorTab("comments");
-                    }
-                    setSendRequested(true);
-                  }},
+                  {label: refinementText.palette.send, run: sendToAgent},
                   {label: refinementText.palette.compare, run: () => {
                     exitFocusMode();
-                    setInspectorOpen(true);
+                    openDrawer("version");
                     setInspectorTab(comparison === null ? "versions" : "compare");
                   }},
                   {label: refinementText.palette.theme, run: onThemeChange},
@@ -2420,6 +2389,64 @@ function ArtifactReview({
         )}
         {trashUndo.element}
       </main>
+
+      {focusMode ? null : (
+        <footer className="as-bottombar">
+          <button
+            aria-keyshortcuts="ArrowLeft K"
+            aria-label={reviewAppText.footer.previousArtifact}
+            className="as-bar-button"
+            disabled={selectedIndex <= 0}
+            onClick={() => stepArtifact(-1)}
+            type="button"
+          >
+            <HugeiconsIcon aria-hidden="true" icon={ArrowLeft01Icon} strokeWidth={1.6} />
+            <span className="as-bottombar__label">{readerText.bottom.previous}</span>
+          </button>
+          <span aria-label={readerText.bottom.position} aria-live="polite" className="as-bottombar__position" role="status">
+            {selectedIndex < 0 ? "0" : selectedIndex + 1} / {catalogItems.length}
+          </span>
+          <button
+            aria-keyshortcuts="ArrowRight J"
+            aria-label={reviewAppText.footer.nextArtifact}
+            className="as-bar-button"
+            disabled={selectedIndex < 0 || selectedIndex >= catalogItems.length - 1}
+            onClick={() => stepArtifact(1)}
+            type="button"
+          >
+            <span className="as-bottombar__label">{readerText.bottom.next}</span>
+            <HugeiconsIcon aria-hidden="true" icon={ArrowRight01Icon} strokeWidth={1.6} />
+          </button>
+          <span className="as-bottombar__path" title={previewPath ?? undefined}>
+            {previewPath ?? reviewAppText.footer.noVersion}
+          </span>
+          {selectedVersion === null ? null : (
+            <span className="as-bottombar__meta">
+              <span>{readerText.bottom.files(selectedVersion.manifest.entries.length)}</span>
+              <span>{formatBytes(previewBytes)}</span>
+            </span>
+          )}
+          <span aria-label={readerText.bottom.hints} className="as-bottombar__hints" role="group">
+            <span><kbd>←</kbd><kbd>→</kbd> {readerText.bottom.switch}</span>
+            <span><kbd>T</kbd> {readerText.bottom.catalog}</span>
+            <span><kbd>C</kbd> {readerText.bottom.comments}</span>
+            <span><kbd>V</kbd> {readerText.bottom.version}</span>
+          </span>
+          <button
+            className="as-bar-button as-preview-footer__reload"
+            disabled={comments.loading || selectedVersion === null}
+            onClick={() => void (
+              commentsInspectorRef.current?.reload() ?? comments.reload()
+            )}
+            type="button"
+          >
+            <HugeiconsIcon aria-hidden="true" icon={RefreshIcon} strokeWidth={1.6} />
+            <span className="as-bottombar__label">
+              {comments.loading ? reviewAppText.general.loading : reviewAppText.footer.reload}
+            </span>
+          </button>
+        </footer>
+      )}
     </div>
   );
 }
@@ -3160,10 +3187,6 @@ function ReviewGate({
       </section>
     </main>
   );
-}
-
-function readInitialInspectorOpen(): boolean {
-  return window.matchMedia("(min-width: 1181px)").matches;
 }
 
 function readReviewLocation(): ReviewLocation {

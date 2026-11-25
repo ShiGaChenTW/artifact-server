@@ -3,7 +3,13 @@ import {expect, test, type Page, type Route} from "@playwright/test";
 
 import {ApiClient, dispatchCreationSchema, dispatchEnvelopeSchema, issueApiKey, signInAdministrator} from "../support/agent-dispatch.js";
 import {publishNew, publishVersion, type PublishResponse} from "../support/publishing.js";
-import {localLogin, startBrowserFixture, stopBrowserFixture, type BrowserFixture} from "./browser-fixture.js";
+import {
+  type BrowserFixture,
+  localLogin,
+  openDrawer,
+  startBrowserFixture,
+  stopBrowserFixture,
+} from "./browser-fixture.js";
 import {createThreadOverApi} from "./comment-api.js";
 
 const projectId = "prj_default";
@@ -51,7 +57,7 @@ async function openArtifact(fixture: BrowserFixture, published: PublishResponse)
 }
 
 async function comments(page: Page) {
-  await page.getByRole("tab", {name: "Comments"}).click();
+  await openDrawer(page, "comments");
 }
 
 function card(page: Page, body: string) {
@@ -180,6 +186,7 @@ test.describe("Review interface refinements", () => {
     await comment(fixture, active, "First catalog comment");
     await comment(fixture, active, "Second catalog comment");
     await page.reload();
+    await openDrawer(page, "catalog");
     const quiet = page.getByRole("button", {name: /Quiet artifact/u});
     const publicRow = page.getByRole("button", {name: /Public artifact/u});
     await expect(quiet.locator("[data-access], .as-artifact-card__counts")).toHaveCount(0);
@@ -196,12 +203,14 @@ test.describe("Review interface refinements", () => {
     const future = await publish(fixture, "Future catalog artifact");
     await page.clock.setFixedTime(new Date("2000-01-01T00:00:00Z"));
     await page.reload();
+    await openDrawer(page, "catalog");
     const time = page.getByRole("button", {name: /Future catalog artifact/u}).locator("time");
     await expect(time).toHaveText(future.artifact.createdAt);
     // The catalog lists through the folder route when folders are available.
     await page.route("**/api/v1/artifacts?*", malformDates);
     await page.route("**/api/v1/projects/*/folders/*?*", malformDates);
     await page.reload();
+    await openDrawer(page, "catalog");
     await expect(time).toHaveText("unknown date");
   });
 
@@ -324,11 +333,14 @@ test.describe("Review interface refinements", () => {
     const sheet = page.getByRole("dialog", {name: "Keyboard shortcuts"});
     await expect(sheet).toBeVisible();
     const keys = await sheet.locator("kbd").allTextContents();
-    expect(keys).toEqual(expect.arrayContaining(["J", "K", "F", "[", "]", "Esc", "\\", "⌘K / Ctrl+K", "⌘↵ / Ctrl+Enter"]));
+    expect(keys).toEqual(expect.arrayContaining([
+      "J", "K", "←", "→", "T", "C", "V", "F", "[", "]", "Esc", "\\", "⌘K / Ctrl+K", "⌘↵ / Ctrl+Enter",
+    ]));
   });
 
   test("UXR-006-F: editable fields keep their keys and dialogs trap and restore focus", async () => {
     const {page} = fixture;
+    await openDrawer(page, "catalog");
     const catalogSearch = page.getByPlaceholder("Search artifacts…");
     await catalogSearch.focus();
     await page.keyboard.press("Control+k");
@@ -434,6 +446,7 @@ test.describe("Review interface refinements", () => {
 });
 
 async function compare(page: Page) {
+  await openDrawer(page, "version");
   await page.getByRole("tab", {name: "Versions"}).click();
   await page.getByRole("button", {exact: true, name: "Compare"}).click();
   await expect(page.getByText("Changed files", {exact: true})).toBeVisible();

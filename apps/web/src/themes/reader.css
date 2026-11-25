@@ -1,0 +1,95 @@
+/*
+ * Reader theme, the active palette. Values follow the reader redesign
+ * proposal (2026-11-25): a Prussian-blue ink on a cool grey shell, one blue
+ * reserved for version numbers, agents and dispatch, and a dark surround
+ * behind the artifact in both themes. The dark palette is tuned on its own
+ * and separates layers with borders instead of shadows.
+ *
+ * Token roles stay those of themes/plannotator.css: `--color-accent` is the
+ * one primary action (here the dispatch blue), `--color-cool` an instrument
+ * (an agent, a version). Selection and hover are a neutral wash, never blue;
+ * links are ink with an underline.
+ */
+:root.theme-reader {
+  color-scheme: light;
+  --color-paper: #F3F6F9;
+  --color-paper-2: #FFFFFF;
+  --color-paper-3: #EAF0F5;
+  --color-panel: #FAFCFD;
+  --color-hover: #E7EDF3;
+  --color-stage: #0F1B26;
+  --color-surround: #0F1B26;
+  --color-sheet: #FFFFFF;
+  --color-ink: #003153;
+  --color-ink-2: #23445E;
+  /* Secondary text. The proposal's #5B7083 reads 4.35:1 on the hover wash;
+     one step darker keeps AA on every light surface. */
+  --color-muted: #566B7E;
+  --color-rule: #D5DEE7;
+  --color-rule-2: #B9C7D4;
+  --color-track: #DCE5ED;
+  --color-accent: #0E6BA8;
+  --color-accent-hover: #0B5A8E;
+  --color-accent-ink: #FFFFFF;
+  --color-accent-soft: #E7EDF3;
+  --color-focus: #0E6BA8;
+  --color-cool: #0E6BA8;
+  --color-cool-soft: #E3EEF6;
+  --color-warn: #8A5300;
+  --color-ok: #2D6A4F;
+  --color-ok-soft: #E6F1EC;
+  --color-bad: #A8321E;
+  --color-bad-soft: #F7E7E3;
+  --color-error: #A8321E;
+  --color-success: #2D6A4F;
+  --color-scrim: rgb(0 49 83 / 0.32);
+  --color-overlay-shadow: rgb(0 49 83 / 0.12);
+  --color-kbd: #FFFFFF;
+  --stage-light: none;
+  --shadow-overlay: 0 1px 2px rgb(0 49 83 / 0.08), 0 8px 24px rgb(0 49 83 / 0.10);
+  --radius: 4px;
+  --radius-card: 4px;
+  --radius-pill: 4px;
+  --radius-chip: 2px;
+  --font-outlier: ui-monospace, "SF Mono", "Geist Mono Variable", "JetBrains Mono", Menlo, Consolas, "PingFang TC", "Noto Sans TC", monospace;
+  --font-display: "Geist Variable", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", ui-sans-serif, system-ui, sans-serif;
+  --tracking-display: 0;
+}
+
+:root.theme-reader.dark {
+  color-scheme: dark;
+  --color-paper: #0B1620;
+  --color-paper-2: #0E1B27;
+  --color-paper-3: #08121A;
+  --color-panel: #0E1B27;
+  --color-hover: #142636;
+  --color-stage: #050B11;
+  --color-surround: #050B11;
+  --color-sheet: #FFFFFF;
+  --color-ink: #DCE6EF;
+  --color-ink-2: #B9C9D7;
+  --color-muted: #8FA3B5;
+  --color-rule: #1E2F3E;
+  --color-rule-2: #2C4255;
+  --color-track: #1A2B3A;
+  --color-accent: #4FA8DC;
+  --color-accent-hover: #6DB9E6;
+  --color-accent-ink: #04121C;
+  --color-accent-soft: #142636;
+  --color-focus: #4FA8DC;
+  --color-cool: #4FA8DC;
+  --color-cool-soft: #12283A;
+  --color-warn: #E2B15C;
+  --color-ok: #7CC9A0;
+  --color-ok-soft: #12291F;
+  --color-bad: #F08A73;
+  --color-bad-soft: #2E1712;
+  --color-error: #F08A73;
+  --color-success: #7CC9A0;
+  --color-scrim: rgb(2 6 10 / 0.6);
+  --color-overlay-shadow: rgb(0 0 0 / 0);
+  --color-kbd: #0B1620;
+  --stage-light: none;
+  /* Dark layers separate with a border, never a shadow. */
+  --shadow-overlay: 0 0 0 1px #2C4255;
+}

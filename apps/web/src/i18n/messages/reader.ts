@@ -1,0 +1,143 @@
+import {defineMessages} from "../locale.ts";
+
+/**
+ * Text for the reader layout (2026-11-25 redesign): the shared top bar, the
+ * Review title bar, its drawers and bottom bar, and the page tabs of Files
+ * and the dashboard. Terms follow i18n/GLOSSARY.md.
+ */
+export const readerText = defineMessages({
+  en: {
+    preview: "Artifact preview",
+    nav: {
+      label: "Primary",
+      review: "Review",
+      dashboard: "Dashboard",
+      files: "Files",
+      settings: "Settings",
+    },
+    catalog: {
+      trigger: "Catalog",
+      title: "Catalog",
+      close: "Close catalog",
+    },
+    title: {
+      currentVersion: "Current version",
+      earlierVersion: "Earlier version",
+      versionLabel: (version: number) => `Version ${version}. Open version info`,
+      modeGroup: "Preview mode",
+      comments: "Comments",
+      sendToAgent: "Send to agent",
+      more: "More actions",
+      shortcuts: "Keyboard shortcuts",
+    },
+    drawer: {
+      comments: "Comments",
+      closeComments: "Close comments",
+      version: "Version info",
+      closeVersion: "Close version info",
+      versionTabs: "Version info sections",
+    },
+    bottom: {
+      previous: "Previous",
+      next: "Next",
+      position: "Artifact position",
+      files: (count: number) => count === 1 ? "1 file" : `${count} files`,
+      hints: "Keyboard shortcuts",
+      switch: "Switch",
+      catalog: "Catalog",
+      comments: "Comments",
+      version: "Version",
+    },
+    shortcuts: {
+      previousNext: "Previous or next artifact",
+      catalog: "Catalog",
+      comments: "Comments",
+      version: "Version info",
+    },
+    files: {
+      sections: "File sections",
+      files: "Files",
+      linked: "Linked folders",
+      pending: (count: number) => `${count.toLocaleString()} pending`,
+      trash: "Trash",
+      folders: "Folders",
+      newerFirst: "Newest first",
+      olderFirst: "Oldest first",
+    },
+    dashboard: {
+      sections: "Dashboard sections",
+      queue: "Queue and activity",
+      overview: "Overview",
+      storage: "Storage",
+      recent: "Recent artifacts",
+      viewOverview: "View overview",
+    },
+  },
+  "zh-TW": {
+    preview: "Artifact 預覽",
+    nav: {
+      label: "主要",
+      review: "審閱",
+      dashboard: "儀表板",
+      files: "檔案",
+      settings: "設定",
+    },
+    catalog: {
+      trigger: "目錄",
+      title: "目錄",
+      close: "關閉目錄",
+    },
+    title: {
+      currentVersion: "目前版本",
+      earlierVersion: "較早版本",
+      versionLabel: (version: number) => `版本 ${version}，開啟版本資訊`,
+      modeGroup: "預覽模式",
+      comments: "留言",
+      sendToAgent: "交給 Agent",
+      more: "更多動作",
+      shortcuts: "鍵盤快捷鍵",
+    },
+    drawer: {
+      comments: "留言",
+      closeComments: "關閉留言",
+      version: "版本資訊",
+      closeVersion: "關閉版本資訊",
+      versionTabs: "版本資訊分頁",
+    },
+    bottom: {
+      previous: "上一個",
+      next: "下一個",
+      position: "Artifact 位置",
+      files: (count: number) => `${count} 個檔案`,
+      hints: "鍵盤快捷鍵",
+      switch: "切換",
+      catalog: "目錄",
+      comments: "留言",
+      version: "版本",
+    },
+    shortcuts: {
+      previousNext: "上一個或下一個 Artifact",
+      catalog: "目錄",
+      comments: "留言",
+      version: "版本資訊",
+    },
+    files: {
+      sections: "檔案分類",
+      files: "檔案",
+      linked: "連結的資料夾",
+      pending: (count: number) => `${count.toLocaleString()} 待擷取`,
+      trash: "垃圾桶",
+      folders: "資料夾",
+      newerFirst: "新到舊",
+      olderFirst: "舊到新",
+    },
+    dashboard: {
+      sections: "儀表板分頁",
+      queue: "待處理與動態",
+      overview: "概況",
+      storage: "儲存空間",
+      recent: "最近 Artifact",
+      viewOverview: "檢視概況",
+    },
+  },
+});

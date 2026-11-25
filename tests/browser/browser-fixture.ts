@@ -66,6 +66,30 @@ export async function localLogin(
   }
 }
 
+/**
+ * Open one Review drawer (the catalog, comments, or version info) from its
+ * always-visible trigger, unless it is already open. Review starts with every
+ * drawer closed, and each navigation starts closed again.
+ */
+export async function openDrawer(
+  page: Page,
+  drawer: "catalog" | "comments" | "version",
+): Promise<void> {
+  const trigger = drawer === "version"
+    ? page.locator(".as-version-trigger")
+    : page.getByRole("button", {
+      name: drawer === "catalog" ? /^(?:Catalog|目錄) \d/u : /^(?:Comments|留言) \d/u,
+    });
+  if (await trigger.getAttribute("aria-expanded") !== "true") await trigger.click();
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
+}
+
+/** Open version info on one of its tabs: Versions, Details, Files, Activity, Compare. */
+export async function openVersionTab(page: Page, tab: RegExp | string): Promise<void> {
+  await openDrawer(page, "version");
+  await page.locator("#review-version-drawer").getByRole("tab", {name: tab}).click();
+}
+
 export async function closeTopDialog(page: Page): Promise<void> {
   await page.keyboard.press("Escape");
 }

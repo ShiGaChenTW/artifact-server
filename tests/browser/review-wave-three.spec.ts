@@ -4,6 +4,7 @@ import {z} from "zod";
 import {publishNew, publishVersion} from "../support/publishing.js";
 import {
   localLogin,
+  openDrawer,
   startBrowserFixture,
   stopBrowserFixture,
 } from "./browser-fixture.js";
@@ -35,6 +36,7 @@ test.describe("Artifact Server Review wave three", () => {
       await expect(preview.getByRole("heading", {name: "Historical review stays open"}))
         .toBeVisible();
 
+      await openDrawer(fixture.page, "version");
       await fixture.page.getByRole("tab", {name: /Versions/u}).click();
       const firstRow = fixture.page.locator(".as-version-list li").filter({hasText: "Version 1"});
       await firstRow.getByRole("button", {name: "Make current"}).click();
@@ -109,7 +111,7 @@ test.describe("Artifact Server Review wave three", () => {
         published.body.artifact.id,
         published.body.version.id,
       ));
-      await fixture.page.getByRole("tab", {name: /Comments/u}).click();
+      await openDrawer(fixture.page, "comments");
       const conversation = fixture.page.getByRole("article").filter({hasText: "Root feedback"});
       await expect(conversation.getByText("Agent reply already in this conversation"))
         .toBeVisible();
@@ -203,6 +205,7 @@ test.describe("Artifact Server Review wave three", () => {
       await expect(preview.getByRole("heading", {name: "Selected preview remains"}))
         .toBeVisible();
 
+      await openDrawer(fixture.page, "catalog");
       const search = fixture.page.getByRole("searchbox", {name: "Search artifacts"});
       await search.fill("  DECISION   BOARD ");
       await expect(fixture.page.getByRole("button", {name: /Decision Board Result/u}))

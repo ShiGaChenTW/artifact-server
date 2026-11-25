@@ -4,7 +4,12 @@ import {z} from "zod";
 
 import {publishNew} from "../support/publishing.js";
 import {apiHeaders} from "../support/runtime-harness.js";
-import {localLogin, startBrowserFixture, stopBrowserFixture} from "./browser-fixture.js";
+import {
+  localLogin,
+  openDrawer,
+  startBrowserFixture,
+  stopBrowserFixture,
+} from "./browser-fixture.js";
 
 test("Review moves an artifact to the trash with Undo, and Trash recovers and purges with typed confirmation", async ({browser}) => {
   const fixture = await startBrowserFixture(browser);
@@ -25,9 +30,15 @@ test("Review moves an artifact to the trash with Undo, and Trash recovers and pu
     const {page} = fixture;
     const catalog = page.getByRole("complementary", {name: "Artifact catalog"});
     const inspector = page.locator(".as-inspector");
+    const openDetails = async (): Promise<void> => {
+      await openDrawer(page, "version");
+      await inspector.getByRole("tab", {name: "Details"}).click();
+    };
+    await openDrawer(page, "catalog");
 
     await catalog.getByRole("button", {name: /Kept report/u}).click();
     await expect(page.getByRole("heading", {name: "Kept report", exact: true})).toBeVisible();
+    await openDetails();
     await inspector.getByRole("button", {name: "Move to Trash", exact: true}).click();
     const toast = page.getByRole("status").filter({hasText: "Moved Kept report to the trash."});
     await expect(toast).toBeVisible();
@@ -43,10 +54,12 @@ test("Review moves an artifact to the trash with Undo, and Trash recovers and pu
 
     await catalog.getByRole("button", {name: /Doomed report/u}).click();
     await expect(page.getByRole("heading", {name: "Doomed report", exact: true})).toBeVisible();
+    await openDetails();
     await inspector.getByRole("button", {name: "Move to Trash", exact: true}).click();
     await expect(catalog.getByRole("button", {name: /Doomed report/u})).toHaveCount(0);
 
-    await page.getByRole("link", {name: "Open trash"}).click();
+    await page.getByRole("navigation", {name: "Primary"}).getByRole("link", {name: "Files"}).click();
+    await page.getByRole("navigation", {name: "File sections"}).getByRole("link", {name: "Trash"}).click();
     await expect(page).toHaveURL(/\/review\/files\/trash$/u);
     await expect(page.getByRole("heading", {level: 1, name: "Trash", exact: true})).toBeVisible();
     const row = page.getByRole("row").filter({hasText: "Doomed report"});

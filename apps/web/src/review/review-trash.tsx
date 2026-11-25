@@ -1,22 +1,18 @@
-import {ArrowLeft01Icon, Moon02Icon, Sun03Icon} from "@hugeicons/core-free-icons";
-import {HugeiconsIcon} from "@hugeicons/react";
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import type {FormEvent, ReactNode} from "react";
 
-import {api, ApiError, type Project, type Recovery, type TrashedItem} from "@/api/client";
-import {ErrorPanel, PageHeader, StatePanel} from "@/components/product";
-import {Button, ButtonLink} from "@/components/ui/button";
+import {api, ApiError, type Project, type Recovery, type Session, type TrashedItem} from "@/api/client";
+import {ErrorPanel, StatePanel} from "@/components/product";
+import {Button} from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {Input} from "@/components/ui/input";
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from "@/components/ui/table";
-import {LanguageSwitch} from "@/i18n/language-switch";
 import {folderText} from "@/i18n/messages/folders";
-import {reviewAppText} from "@/i18n/messages/review-app";
 import {trashText} from "@/i18n/messages/trash";
 import {errorMessage, formatTimestamp} from "@/lib/presentation";
-import {ArtifactMark} from "./artifact-mark.tsx";
+import {AppTopBar, FilesSectionHeader} from "./app-shell.tsx";
 
 type Dialogs =
   | {readonly kind: "purge"; readonly item: TrashedItem}
@@ -29,8 +25,9 @@ type Loaded =
 
 /** Trashed artifacts and folder groups across projects, with Recover and Purge. */
 export function TrashPage({
-  onThemeChange, projects, theme,
+  capabilities, onThemeChange, projects, theme,
 }: {
+  readonly capabilities: Session["capabilities"];
   readonly onThemeChange: () => void;
   readonly projects: readonly Project[];
   readonly theme: "dawn" | "moon";
@@ -104,36 +101,18 @@ export function TrashPage({
   };
 
   return (
-    <div className="as-settings">
-      <header className="as-settings__header">
-        <div className="as-settings__header-inner">
-          <a aria-label="Artifact Server" className="as-settings__brand" href="/review">
-            <span className="as-settings__brand-mark">
-              <ArtifactMark className="as-settings__mark" />
-            </span>
-            <span className="as-settings__brand-label">{trashText.title}</span>
-          </a>
-          <div className="as-settings__header-actions">
-            <LanguageSwitch />
-            <button
-              aria-label={theme === "moon" ? reviewAppText.catalog.useLightTheme : reviewAppText.catalog.useDarkTheme}
-              className="as-icon-button"
-              onClick={onThemeChange}
-              title={theme === "moon" ? reviewAppText.catalog.useLightTheme : reviewAppText.catalog.useDarkTheme}
-              type="button"
-            >
-              <HugeiconsIcon icon={theme === "moon" ? Sun03Icon : Moon02Icon} strokeWidth={1.8} />
-            </button>
-            <ButtonLink href="/review" size="sm" variant="outline">
-              <HugeiconsIcon data-icon="inline-start" icon={ArrowLeft01Icon} strokeWidth={1.8} />
-              {trashText.back}
-            </ButtonLink>
-          </div>
-        </div>
-      </header>
-      <main className="mx-auto grid w-full max-w-[72rem] min-w-0 grid-cols-1 gap-6 px-4 pt-6 pb-24 sm:px-6" id="main-content">
-        <PageHeader description={trashText.description} title={trashText.title} />
-        <p aria-live="polite" className="min-h-5 text-sm text-muted-foreground" role="status">{notice}</p>
+    <div className="as-page">
+      <AppTopBar area="files" capabilities={capabilities} onThemeChange={onThemeChange} theme={theme} />
+      <div className="as-page__scroll">
+      <main className="as-page__wrap" id="main-content">
+        <FilesSectionHeader
+          capabilities={capabilities}
+          counts={loaded.status === "ready" ? {trash: loaded.items.length} : {}}
+          current="trash"
+          title={trashText.title}
+        />
+        <p className="as-page-description">{trashText.description}</p>
+        <p aria-live="polite" className="as-files-status" role="status">{notice}</p>
         {loaded.status === "loading" ? <StatePanel description={trashText.loading} title={trashText.title} />
           : loaded.status === "failed" ? <ErrorPanel error={loaded.error} onRetry={() => setAttempt((value) => value + 1)} />
           : loaded.items.length === 0 ? <StatePanel description={trashText.emptyDescription} title={trashText.empty} />
@@ -149,6 +128,7 @@ export function TrashPage({
             />
           )}
       </main>
+      </div>
       {dialog?.kind === "purge" ? (
         <PurgeDialog item={dialog.item} onClose={() => setDialog(null)} onConfirm={purge} pending={pending === dialog.item.id} />
       ) : null}

@@ -1,9 +1,10 @@
 ---
 id: ARTSV-6
 title: 內容先行閱讀器改版導入 main（審閱、檔案、儀表板）
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-25T13:18:00Z'
+updated_date: '2026-11-25T13:22:00Z'
 labels: []
 dependencies: []
 references:

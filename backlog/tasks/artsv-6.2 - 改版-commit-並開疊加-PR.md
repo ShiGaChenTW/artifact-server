@@ -1,9 +1,10 @@
 ---
 id: ARTSV-6.2
 title: 改版 commit 並開疊加 PR
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-25T13:19:00Z'
+updated_date: '2026-11-25T13:22:00Z'
 labels: []
 dependencies:
   - ARTSV-6.1

@@ -5592,7 +5592,7 @@ requirements:
     source: {file: review-refinements-spec.md, anchor: contract}
     acceptance:
       behavior: {id: UXR-004-B, description: "Activating a card by click or Enter selects it and scrolls its anchor into view; reply and send controls are reachable by keyboard on the focused card; with no agent the panel shows the connect prompt."}
-      failure: {id: UXR-004-F, description: "Hidden actions are never removed from the keyboard order of the focused card, and no control label is truncated at the default inspector width."}
+      failure: {id: UXR-004-F, description: "Hidden actions are never removed from the keyboard order of the focused card, and no control label is truncated at the default comments drawer width."}
     deployments: [local]
     status: verified
     depends_on: [CMT-019]
@@ -5627,7 +5627,7 @@ requirements:
     owner: web-application
     source: {file: review-refinements-spec.md, anchor: contract}
     acceptance:
-      behavior: {id: UXR-006-B, description: "Control-K, typing part of an artifact name, and Enter opens that artifact; a command entry enters annotate mode; ? opens the sheet listing J/K, F, [, ], Esc, Command-backslash, Command-K, and Command-Enter."}
+      behavior: {id: UXR-006-B, description: "Control-K, typing part of an artifact name, and Enter opens that artifact; a command entry enters annotate mode; ? opens the sheet listing J/K, the left and right arrows, T, C, V, F, [, ], Esc, Command-backslash, Command-K, and Command-Enter."}
       failure: {id: UXR-006-F, description: "Neither opens while typing in an input or composer, Escape closes and restores focus to the previous element, and an empty search shows no results without errors."}
     deployments: [local]
     status: verified
@@ -5674,3 +5674,45 @@ requirements:
         result: pass
         run: project/evidence/browser.json
         recorded_at: "2026-11-24T08:23:54.746Z"
+
+  - id: UXR-009
+    kind: behavior
+    behavior: Review gives the preview the full window, with the catalog, comments, and version information in drawers that start closed, open from always-visible triggers that expose aria-expanded and aria-controls, and never cover the whole preview.
+    owner: web-application
+    source: {file: review-refinements-spec.md, anchor: reader-layout}
+    acceptance:
+      behavior: {id: UXR-009-B, description: "On a 1440-pixel window every drawer trigger reports aria-expanded false and every drawer is hidden; opening the catalog narrows the preview, the comments and version drawers share the right side so opening one closes the other, and closing a drawer returns focus to its trigger."}
+      failure: {id: UXR-009-F, description: "Below 760 pixels an open drawer overlays the preview without resizing it, leaves at least 56 pixels of the preview visible, and never makes the page scroll sideways."}
+    deployments: [local]
+    status: implementing
+    proof_gap: Browser tests for both IDs pass locally, but no recorded browser evidence report is attached yet; run pnpm test:web to record it.
+    depends_on: []
+    evidence: []
+
+  - id: UXR-010
+    kind: behavior
+    behavior: T, C, and V toggle the catalog, comments, and version drawers and move focus into them, left and right arrows step through artifacts, and Escape closes the most recently opened drawer, while chords with modifiers, keys typed in editable fields, and keys pressed inside the preview frame are left alone.
+    owner: web-application
+    source: {file: review-refinements-spec.md, anchor: reader-layout}
+    acceptance:
+      behavior: {id: UXR-010-B, description: "T, C, and V open their drawers and focus each drawer's title, V replaces an open comments drawer, and two Escapes close the version drawer and then the catalog, each returning focus to its trigger."}
+      failure: {id: UXR-010-F, description: "Shift-T, Alt-T, Alt-C, Control-Right, and Command-Right change nothing; T, C, V, the right arrow, and Escape pressed inside the focused preview frame change nothing; T, C, and V typed in catalog search stay in the field."}
+    deployments: [local]
+    status: implementing
+    proof_gap: Browser tests for both IDs pass locally, but no recorded browser evidence report is attached yet; run pnpm test:web to record it.
+    depends_on: [UXR-009, UXR-006]
+    evidence: []
+
+  - id: UXR-011
+    kind: behavior
+    behavior: The bottom bar shows the selected artifact's path, its position in the catalog, and previous and next controls, and stepping by button or arrow key keeps the heading, version, and path of one artifact together.
+    owner: web-application
+    source: {file: review-refinements-spec.md, anchor: reader-layout}
+    acceptance:
+      behavior: {id: UXR-011-B, description: "Pressing the right arrow from the first of two artifacts shows the second artifact's name, current version, path, and position 2 / 2; Previous and the left arrow return to the first artifact's name, version, and path."}
+      failure: {id: UXR-011-F, description: "At the first artifact Previous is disabled and the left arrow and K change nothing; at the last artifact Next is disabled and the right arrow and J leave the name, version, path, position, and address unchanged."}
+    deployments: [local]
+    status: implementing
+    proof_gap: Browser tests for both IDs pass locally, but no recorded browser evidence report is attached yet; run pnpm test:web to record it.
+    depends_on: [UXR-009]
+    evidence: []

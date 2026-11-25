@@ -9,10 +9,10 @@ import {
 } from "./browser-fixture.js";
 
 /*
- * The reader layout (2026-11-25 redesign proposal): the catalog, comments and
- * version info are drawers closed at rest, opened from always-visible
- * triggers or T, C and V; arrow keys step through the catalog. No ledger
- * requirement covers this layout yet, so these tests carry no requirement ID.
+ * The reader layout (review-refinements-spec.md, section 4): the catalog,
+ * comments and version info are drawers closed at rest (UXR-009), opened from
+ * always-visible triggers or T, C and V (UXR-010); arrow keys and the bottom
+ * bar step through the catalog (UXR-011).
  */
 
 function fixtureHtml(title: string): string {
@@ -67,7 +67,7 @@ test.describe("Reader layout", () => {
     await stopBrowserFixture(fixture);
   });
 
-  test("drawers start closed and toggle from their triggers, narrowing the preview on a wide screen", async () => {
+  test("UXR-009-B: drawers start closed and toggle from their triggers, narrowing the preview on a wide screen", async () => {
     const {page} = fixture;
     await page.setViewportSize({height: 900, width: 1440});
     await openReview(fixture);
@@ -107,7 +107,7 @@ test.describe("Reader layout", () => {
     await expect(version).toBeFocused();
   });
 
-  test("below 760px a drawer overlays the preview and leaves a strip of it visible", async () => {
+  test("UXR-009-F: below 760px a drawer overlays the preview, leaves a strip of it visible, and never scrolls the page sideways", async () => {
     const {page} = fixture;
     await page.setViewportSize({height: 844, width: 390});
     await openReview(fixture);
@@ -127,7 +127,7 @@ test.describe("Reader layout", () => {
     await expect(page.locator(".as-bottombar__hints")).toBeHidden();
   });
 
-  test("T, C and V toggle drawers and move focus; Escape closes the last one and returns focus", async () => {
+  test("UXR-010-B: T, C and V toggle drawers and move focus; Escape closes the last one and returns focus", async () => {
     const {page} = fixture;
     await page.setViewportSize({height: 900, width: 1440});
     await openReview(fixture);
@@ -150,22 +150,55 @@ test.describe("Reader layout", () => {
     await page.keyboard.press("Escape");
     await expect(catalog).toHaveAttribute("aria-expanded", "false");
     await expect(catalog).toBeFocused();
+  });
 
-    // Modifiers and editable fields keep their keys.
+  test("UXR-010-F: shortcut keys with modifiers, in editable fields, or inside the preview frame are left alone", async () => {
+    const {page} = fixture;
+    await page.setViewportSize({height: 900, width: 1440});
+    await openReview(fixture);
+    const {catalog, comments, version} = triggers(page);
+    const heading = page.getByRole("heading", {level: 1});
+
+    // Modifier chords belong to the browser and the operating system.
+    await page.locator("#review-preview").focus();
     await page.keyboard.press("Shift+T");
     await page.keyboard.press("Alt+t");
+    await page.keyboard.press("Alt+c");
+    await page.keyboard.press("Control+ArrowRight");
+    await page.keyboard.press("Meta+ArrowRight");
     await expect(catalog).toHaveAttribute("aria-expanded", "false");
+    await expect(comments).toHaveAttribute("aria-expanded", "false");
+    await expect(heading).toHaveText("Beta report");
+
+    // Keys pressed inside the artifact stay with the artifact.
+    const artifact = page.frameLocator(".as-artifact-frame").frameLocator("iframe");
+    await artifact.getByRole("heading", {name: "Beta body"}).click();
+    await expect(page.locator(".as-artifact-frame")).toBeFocused();
+    await ["t", "c", "v", "ArrowRight", "Escape"].reduce<Promise<void>>(async (previous, key) => {
+      await previous;
+      await page.keyboard.press(key);
+    }, Promise.resolve());
+    await expect(catalog).toHaveAttribute("aria-expanded", "false");
+    await expect(comments).toHaveAttribute("aria-expanded", "false");
+    await expect(version).toHaveAttribute("aria-expanded", "false");
+    await expect(heading).toHaveText("Beta report");
+
+    // Editable fields keep their letters and arrow keys.
     await catalog.click();
     const search = page.getByRole("searchbox", {name: "Search artifacts"});
     await search.fill("");
     await search.press("c");
     await search.press("v");
-    await expect(search).toHaveValue("cv");
+    await search.press("t");
+    await search.press("ArrowLeft");
+    await expect(search).toHaveValue("cvt");
+    await expect(catalog).toHaveAttribute("aria-expanded", "true");
     await expect(comments).toHaveAttribute("aria-expanded", "false");
     await expect(version).toHaveAttribute("aria-expanded", "false");
+    await expect(heading).toHaveText("Beta report");
   });
 
-  test("arrow keys and the bottom bar step through artifacts and keep name, version and path together", async () => {
+  test("UXR-011-B: arrow keys and the bottom bar step through artifacts and keep name, version and path together", async () => {
     const {page} = fixture;
     await page.setViewportSize({height: 900, width: 1440});
     await openReview(fixture);
@@ -197,5 +230,37 @@ test.describe("Reader layout", () => {
     await page.keyboard.press("ArrowLeft");
     await expect(heading).toHaveText("Beta report");
     await expect(position).toHaveText("1 / 2");
+  });
+
+  test("UXR-011-F: at either end of the catalog the step controls are disabled and change nothing", async () => {
+    const {page} = fixture;
+    await page.setViewportSize({height: 900, width: 1440});
+    await openReview(fixture);
+    const heading = page.getByRole("heading", {level: 1});
+    const version = page.locator(".as-version-trigger__number");
+    const path = page.locator(".as-bottombar__path");
+    const position = page.locator(".as-bottombar__position");
+    const previous = page.getByRole("button", {name: "Previous artifact"});
+    const next = page.getByRole("button", {name: "Next artifact"});
+
+    await expect(previous).toBeDisabled();
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("k");
+    await expect(heading).toHaveText("Beta report");
+    await expect(version).toHaveText("v1");
+    await expect(path).toHaveText("reports/beta.html");
+    await expect(position).toHaveText("1 / 2");
+
+    await next.click();
+    await expect(heading).toHaveText("Alpha plan");
+    await expect(next).toBeDisabled();
+    const lastAddress = page.url();
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("j");
+    await expect(heading).toHaveText("Alpha plan");
+    await expect(version).toHaveText("v2");
+    await expect(path).toHaveText("plans/alpha.html");
+    await expect(position).toHaveText("2 / 2");
+    expect(page.url()).toBe(lastAddress);
   });
 });

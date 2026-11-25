@@ -5684,10 +5684,14 @@ requirements:
       behavior: {id: UXR-009-B, description: "On a 1440-pixel window every drawer trigger reports aria-expanded false and every drawer is hidden; opening the catalog narrows the preview, the comments and version drawers share the right side so opening one closes the other, and closing a drawer returns focus to its trigger."}
       failure: {id: UXR-009-F, description: "Below 760 pixels an open drawer overlays the preview without resizing it, leaves at least 56 pixels of the preview visible, and never makes the page scroll sideways."}
     deployments: [local]
-    status: implementing
-    proof_gap: Browser tests for both IDs pass locally, but no recorded browser evidence report is attached yet; run pnpm test:web to record it.
+    status: verified
     depends_on: []
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [UXR-009-B, UXR-009-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-11-25T13:54:04.853Z"
 
   - id: UXR-010
     kind: behavior
@@ -5698,10 +5702,14 @@ requirements:
       behavior: {id: UXR-010-B, description: "T, C, and V open their drawers and focus each drawer's title, V replaces an open comments drawer, and two Escapes close the version drawer and then the catalog, each returning focus to its trigger."}
       failure: {id: UXR-010-F, description: "Shift-T, Alt-T, Alt-C, Control-Right, and Command-Right change nothing; T, C, V, the right arrow, and Escape pressed inside the focused preview frame change nothing; T, C, and V typed in catalog search stay in the field."}
     deployments: [local]
-    status: implementing
-    proof_gap: Browser tests for both IDs pass locally, but no recorded browser evidence report is attached yet; run pnpm test:web to record it.
+    status: verified
     depends_on: [UXR-009, UXR-006]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [UXR-010-B, UXR-010-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-11-25T13:54:04.853Z"
 
   - id: UXR-011
     kind: behavior
@@ -5712,7 +5720,11 @@ requirements:
       behavior: {id: UXR-011-B, description: "Pressing the right arrow from the first of two artifacts shows the second artifact's name, current version, path, and position 2 / 2; Previous and the left arrow return to the first artifact's name, version, and path."}
       failure: {id: UXR-011-F, description: "At the first artifact Previous is disabled and the left arrow and K change nothing; at the last artifact Next is disabled and the right arrow and J leave the name, version, path, position, and address unchanged."}
     deployments: [local]
-    status: implementing
-    proof_gap: Browser tests for both IDs pass locally, but no recorded browser evidence report is attached yet; run pnpm test:web to record it.
+    status: verified
     depends_on: [UXR-009]
-    evidence: []
+    evidence:
+      - deployment: local
+        tests: [UXR-011-B, UXR-011-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-11-25T13:54:04.853Z"

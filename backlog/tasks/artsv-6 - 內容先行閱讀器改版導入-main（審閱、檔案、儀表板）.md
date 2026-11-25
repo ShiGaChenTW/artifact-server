@@ -4,7 +4,7 @@ title: 內容先行閱讀器改版導入 main（審閱、檔案、儀表板）
 status: In Progress
 assignee: []
 created_date: '2026-11-25T13:18:00Z'
-updated_date: '2026-11-25T13:22:00Z'
+updated_date: '2026-11-25T14:07:00Z'
 labels: []
 dependencies: []
 references:
@@ -24,6 +24,6 @@ ordinal: 24000
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 feat/workbench-files 與改版都已合併進 main
-- [ ] #2 新行為都有帶需求編號的 B/F 瀏覽器測試，ledger 證據已記錄
-- [ ] #3 pnpm verify:iteration 通過
+- [x] #2 新行為都有帶需求編號的 B/F 瀏覽器測試，ledger 證據已記錄
+- [x] #3 pnpm verify:iteration 通過
 <!-- AC:END -->

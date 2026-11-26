@@ -1,9 +1,10 @@
 ---
 id: ARTSV-7.7
 title: 浮動卡：目錄卡與留言狀態卡
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-25T17:17:00Z'
+updated_date: '2026-11-26T14:23:00Z'
 labels: []
 dependencies:
   - ARTSV-7.3
@@ -21,7 +22,13 @@ ordinal: 40000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 目錄隨文件捲動更新目前章節
-- [ ] #2 關閉與重開卡片後文件重新置中
-- [ ] #3 計數與留言資料一致
+- [x] #1 目錄隨文件捲動更新目前章節
+- [x] #2 關閉與重開卡片後文件重新置中
+- [x] #3 計數與留言資料一致
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+已實作並完成獨立審查修正。驗證：VITEST_MAX_WORKERS=2 pnpm verify:iteration（exit 0；全部測試與門檻不變）；project/evidence/review-board-iteration.json。B/F：UXR-012–018，project/evidence/review-board.json；協定敵意測試：project/evidence/review-reader-protocol.json。
+<!-- SECTION:NOTES:END -->

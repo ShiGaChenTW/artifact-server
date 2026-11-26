@@ -5,6 +5,7 @@ import { installDraftGuard } from "@/components/comments/comment-drafts";
 
 import { htmlLang } from "@/i18n/locale";
 
+import {applyReviewPalette, readReviewPalette} from "./review-palette.ts";
 import {readReviewTheme} from "./review-theme.ts";
 import { ReviewApp } from "./review-app.tsx";
 import "../index.css";
@@ -22,9 +23,8 @@ installDraftGuard();
 
 const initialTheme = readReviewTheme();
 document.documentElement.dataset["reviewTheme"] = initialTheme;
-// The colour palette is a theme class (src/themes/); Reader is the active
-// theme. themes/plannotator.css stays available as the fallback palette.
-document.documentElement.classList.add("theme-reader");
+// Apply the stored palette before React renders any application area.
+applyReviewPalette(readReviewPalette(), false);
 document.documentElement.classList.toggle("dark", initialTheme === "moon");
 
 const rootElement = document.querySelector("#review-root");

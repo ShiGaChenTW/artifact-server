@@ -30,6 +30,8 @@ import {
   useCommentPoll,
 } from "@/components/comments/comment-poll";
 import {componentsText} from "@/i18n/messages/components";
+import {boardCommentsText} from "@/i18n/messages/review-board-comments";
+import "./review-board-comments.css";
 import {refinementText} from "@/i18n/messages/review-refinements";
 import {reviewPartsText} from "@/i18n/messages/review-parts";
 import {formatTimestamp, displayError} from "@/lib/presentation";
@@ -144,7 +146,7 @@ async function loadConversations(
 export interface ReviewCommentSession {
   readonly artifactId: string | null;
   readonly annotations: readonly ReviewAnnotation[];
-  readonly changeState: (thread: CommentThread) => Promise<void>;
+  readonly changeState: (thread: CommentThread) => Promise<boolean>;
   readonly createReply: (
     thread: CommentThread,
     body: string,
@@ -342,8 +344,8 @@ export function useReviewComments({
     }
   }, [artifactId, onVersionChanged, ownership, projectId, reload, versionId]);
 
-  const changeState = useCallback(async (thread: CommentThread): Promise<void> => {
-    if (artifactId === null || projectId === "") return;
+  const changeState = useCallback(async (thread: CommentThread): Promise<boolean> => {
+    if (artifactId === null || projectId === "") return false;
     setError(null);
     try {
       await ownership.own(() =>
@@ -352,10 +354,12 @@ export function useReviewComments({
         })
       );
       await reload();
+      return true;
     } catch (caught) {
       setError(
         caught instanceof Error ? caught : new Error(text.failure.changeState),
       );
+      return false;
     }
   }, [artifactId, ownership, projectId, reload]);
 
@@ -576,12 +580,22 @@ function ReplyComposer({
 
 type CommentView = "all" | "awaiting" | "open" | "resolved" | "sent";
 
+export interface ReviewBoardCommentStats {
+  readonly open: number;
+  readonly awaiting: number;
+  readonly sent: number;
+  readonly resolved: number;
+}
+
 export interface ReviewCommentsInspectorHandle {
   readonly reload: () => Promise<void>;
 }
 
 /** Review-native thread list kept beside, never over, the artifact. */
 export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle, {
+  readonly boardMode?: boolean;
+  readonly onBoardPeople?: (people: {readonly reviewers: readonly string[]; readonly targets: readonly string[]}) => void;
+  readonly onBoardStats?: (stats: ReviewBoardCommentStats) => void;
   readonly canDeleteAny: boolean;
   readonly canComment: boolean;
   readonly linkedThreadId?: string | null;
@@ -591,6 +605,9 @@ export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle,
   readonly session: ReviewCommentSession;
   readonly versionId: string | null;
 }>(function ReviewCommentsInspector({
+  boardMode = false,
+  onBoardStats,
+  onBoardPeople,
   canDeleteAny,
   canComment,
   linkedThreadId = null,
@@ -603,7 +620,7 @@ export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle,
   const unanchored = new Set(session.unanchoredIds);
   const [agents, setAgents] = useState<readonly AgentPresence[] | null>(null);
   const [agentError, setAgentError] = useState<Error | null>(null);
-  const [view, setView] = useState<CommentView>(linkedThreadId === null ? "open" : "all");
+  const [view, setView] = useState<CommentView>(linkedThreadId === null && !boardMode ? "open" : "all");
   const [sentThreads, setSentThreads] = useState<readonly CommentThread[]>([]);
   const [sentReplies, setSentReplies] = useState<ReadonlyMap<
     string,
@@ -614,7 +631,11 @@ export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle,
     AgentDispatch
   >>(new Map());
   const [sentLoading, setSentLoading] = useState(false);
+  const [resolvingAll, setResolvingAll] = useState(false);
   const [sentError, setSentError] = useState<Error | null>(null);
+  useEffect(() => {
+    if (boardMode && view === "sent") setView("all");
+  }, [boardMode, view]);
   const sendAllRef = useRef<HTMLDivElement>(null);
   const dispatchGeneration = useRef(0);
   const linkedCard = useRef<HTMLElement>(null);
@@ -667,13 +688,6 @@ export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle,
     await Promise.all([session.reload(), loadSent(), loadAgents()]);
   }, [loadAgents, loadSent, session.reload]);
   useImperativeHandle(ref, () => ({reload: reloadDispatchSurface}), [reloadDispatchSurface]);
-  useEffect(() => {
-    if (!sendRequested || agents === null) return;
-    onSendRequestHandled?.();
-    const control = sendAllRef.current?.querySelector<HTMLElement>("button:not([disabled]), a");
-    if (control instanceof HTMLButtonElement) control.click();
-    else control?.focus();
-  }, [agents, onSendRequestHandled, sendRequested]);
   const dispatchUndo = useDispatchUndo(session.projectId, reloadDispatchSurface);
 
   useEffect(() => {
@@ -689,9 +703,19 @@ export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle,
     session.artifactId !== null && versionId !== null,
   );
 
-  const openThreads = session.threads.filter((thread) => thread.state === "open");
+  const boardThreads = mergeThreads(sentThreads, session.threads);
+  const sourceThreads = boardMode ? boardThreads : session.threads;
+  const openThreads = sourceThreads.filter((thread) => thread.state === "open");
+  // The default comment list excludes active dispatches and releases failed,
+  // canceled and addressed threads back to the reviewer for another send.
+  const dispatchedIds = new Set(sentThreads.map((thread) => thread.id));
+  const sendableThreads = session.threads.filter((thread) =>
+    thread.state === "open" && !dispatchedIds.has(thread.id)
+  );
+  const boardBusy = session.loading || sentLoading || resolvingAll;
+  const boardSendable = boardBusy || sentError !== null ? [] : sendableThreads;
   const awaitingThreads = openThreads.filter((thread) => dispatchByThread.get(thread.id)?.state === "addressed");
-  const resolvedThreads = session.threads.filter((thread) => thread.state === "resolved");
+  const resolvedThreads = sourceThreads.filter((thread) => thread.state === "resolved");
   const visibleThreads = view === "sent"
     ? sentThreads
     : view === "all"
@@ -699,8 +723,28 @@ export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle,
       : view === "open"
         ? openThreads
         : view === "awaiting" ? awaitingThreads : resolvedThreads;
-  const visibleReplies = view === "sent" ? sentReplies : session.repliesByThread;
-  const loadingVisible = view === "sent" ? sentLoading : session.loading;
+  const visibleReplies = view === "sent" ? sentReplies : boardMode
+    ? new Map([...sentReplies, ...session.repliesByThread]) : session.repliesByThread;
+  const people = useMemo(() => ({
+    reviewers: [...new Set([...sentThreads, ...session.threads].map((thread) => thread.author.displayName))],
+    targets: [...new Set([...dispatchByThread.values()].map((dispatch) => dispatch.agentDisplayName))],
+  }), [dispatchByThread, sentThreads, session.threads]);
+  useEffect(() => {if (boardMode) onBoardPeople?.(people);}, [boardMode, onBoardPeople, people]);
+  const openCount = openThreads.length;
+  const awaitingCount = awaitingThreads.length;
+  const sentCount = sentThreads.length;
+  const resolvedCount = resolvedThreads.length;
+  useEffect(() => {
+    if (boardMode) onBoardStats?.({open: openCount, awaiting: awaitingCount, sent: sentCount, resolved: resolvedCount});
+  }, [awaitingCount, boardMode, onBoardStats, openCount, resolvedCount, sentCount]);
+  useEffect(() => {
+    if (!sendRequested || agents === null || (boardMode && boardBusy)) return;
+    onSendRequestHandled?.();
+    const control = sendAllRef.current?.querySelector<HTMLElement>("button:not([disabled]), a");
+    if (control instanceof HTMLButtonElement) control.click();
+    else control?.focus();
+  }, [agents, boardBusy, boardMode, onSendRequestHandled, sendRequested]);
+  const loadingVisible = boardMode ? session.loading || sentLoading : view === "sent" ? sentLoading : session.loading;
   const now = Date.now();
   const linkedThread = visibleThreads.find((thread) => thread.id === linkedThreadId);
   useEffect(() => {
@@ -724,8 +768,22 @@ export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle,
     await reloadDispatchSurface();
   };
 
+  const resolveAll = async (): Promise<void> => {
+    if (boardBusy || openThreads.length === 0) return;
+    setResolvingAll(true);
+    try {
+      const complete = await openThreads.reduce<Promise<boolean>>(async (previous, thread) => {
+        if (!await previous) return false;
+        return session.changeState(thread);
+      }, Promise.resolve(true));
+      if (complete) await loadSent();
+    } finally {
+      setResolvingAll(false);
+    }
+  };
+
   return (
-    <div className="as-comments">
+    <div className="as-comments" data-board-mode={boardMode}>
       {dispatchUndo.element}
       <div className="as-comments__agents">
         <div>
@@ -741,7 +799,7 @@ export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle,
       {agentError === null ? null : (
         <p className="as-comments__agent-error">{displayError(agentError)}</p>
       )}
-      {canComment ? (
+      {canComment && !boardMode ? (
         <div className="as-comments__send-all" ref={sendAllRef}>
           {agents !== null && !agents.some((agent) => agent.connected) ? (
             <p className="as-comments__connect">
@@ -775,7 +833,7 @@ export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle,
         <p className="as-comments__error" role="alert">{displayError(sentError)}</p>
       )}
       <nav aria-label={text.filtersLabel} className="as-comments__filters">
-        {(["open", "awaiting", "all", "resolved", "sent"] as const).map((candidate) => (
+        {(boardMode ? ["all", "open", "awaiting", "resolved"] as const : ["open", "awaiting", "all", "resolved", "sent"] as const).map((candidate) => (
           <button
             aria-pressed={view === candidate}
             className="as-button"
@@ -810,7 +868,7 @@ export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle,
       ) : null}
       <ol className="as-comment-list">
         {visibleThreads.map((thread) => {
-          const sentDispatch = view === "sent" || view === "awaiting" || view === "open" || thread.id === linkedThreadId
+          const sentDispatch = boardMode || view === "sent" || view === "awaiting" || view === "open" || thread.id === linkedThreadId
             ? dispatchByThread.get(thread.id)
             : undefined;
           const selected = session.selectedThreadId === thread.id;
@@ -821,6 +879,7 @@ export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle,
                 aria-current={selected ? "true" : undefined}
                 aria-keyshortcuts="Enter"
                 className="as-comment-card"
+                data-board-thread={boardMode ? thread.id : undefined}
                 data-selected={selected}
                 onClick={(event) => {
                   if (!(event.target instanceof Element) || event.target.closest("button, a, input, textarea, label, [role='dialog']")) return;
@@ -869,7 +928,7 @@ export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle,
                           {text.cancelSend}
                         </button>
                       ) : null}
-                      {canComment && thread.state === "open" ? (
+                      {canComment && thread.state === "open" && (!boardMode || sendableThreads.some((candidate) => candidate.id === thread.id)) ? (
                         <div className="as-comment-card__secondary">
                           <SendToAgentControl
                             agents={agents}
@@ -936,6 +995,38 @@ export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle,
           );
         })}
       </ol>
+      {boardMode && canComment ? (
+        <footer aria-label={boardCommentsText.gateLabel} className="as-comments__board-gate">
+          <div className="as-comments__send-all" ref={sendAllRef}>
+            <SendToAgentControl
+              agents={agents}
+              buttonSize="xs"
+              buttonVariant="default"
+              feedback={dispatchUndo.feedback}
+              label={boardCommentsText.send}
+              onSent={onSent}
+              oneAgentLabel={boardCommentsText.sendTo}
+              openCount={boardSendable.length}
+              principalId={principalId}
+              projectId={session.projectId}
+              resolveBundle={() => Promise.resolve(bundleOfThreads(boardSendable))}
+            />
+          </div>
+          {agents !== null && !agents.some((agent) => agent.connected) ? (
+            <a href="/review/settings/mcp">{refinementText.connect}</a>
+          ) : null}
+          <button
+            aria-busy={resolvingAll}
+            className="as-button"
+            disabled={boardBusy || sentError !== null || openThreads.length === 0}
+            onClick={() => void resolveAll()}
+            type="button"
+          >
+            {resolvingAll ? boardCommentsText.resolving : boardCommentsText.resolveAll}
+          </button>
+          <p role="status">{boardCommentsText.summary(sendableThreads.length, openThreads.length, awaitingThreads.length)}</p>
+        </footer>
+      ) : null}
     </div>
   );
 });

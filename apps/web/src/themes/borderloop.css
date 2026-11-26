@@ -1,0 +1,103 @@
+/*
+ * ARTSV-7.6: Borderloop's default palette only (no paper/teal/graphite).
+ * Source: docs/Design/UI_J2-h2-buttons-warn-polish.html, :root and
+ * [data-theme="dark"], in Scott's archived Borderloop project.
+ *
+ * AA adjustments, verified by review-palette.spec.ts:
+ * - Light muted #6B7185 -> #646A7D: 4.52:1 on #E9EBF2 (was 4.08).
+ * - Light accent #4F63D6 -> #4B5FD2: 4.56:1 on hover (was 4.31).
+ * - Source lines #D3D7E3 / #353A48 are decorative dividers; keep them in
+ *   --color-track. Control/rule tokens use #7C8294 / #858B9D instead:
+ *   minimum 3.22:1 / 4.15:1 against the adjacent hover surface.
+ * - Light warning/ok/error use darker semantic inks for small AA text.
+ * - Dark bad-soft uses #38211D, preserving AA for error #F08A73.
+ * Neutral focus keeps accent reserved for version/agent/dispatch signals.
+ */
+:root.theme-borderloop {
+  color-scheme: light;
+  --color-paper: #F3F4F8;
+  --color-paper-2: #FFFFFF;
+  --color-paper-3: #EEF0F6;
+  --color-panel: #FFFFFF;
+  --color-hover: #E9EBF2;
+  --color-stage: #15171E;
+  --color-surround: #15171E;
+  --color-sheet: #FFFFFF;
+  --color-ink: #1D2130;
+  --color-ink-2: #444A5D;
+  --color-muted: #646A7D;
+  --color-rule: #7C8294;
+  --color-rule-2: #7C8294;
+  --color-track: #D3D7E3;
+  --color-accent: #4B5FD2;
+  --color-accent-hover: #3A4EBF;
+  --color-accent-ink: #FFFFFF;
+  --color-accent-soft: #E9EBF2;
+  --color-focus: #444A5D;
+  --color-cool: #4B5FD2;
+  --color-cool-soft: #E9EBF2;
+  --color-warn: #825000;
+  --color-ok: #236A3C;
+  --color-ok-soft: #E4F5EA;
+  --color-bad: #A8321E;
+  --color-bad-soft: #FBE7E3;
+  --color-error: #A8321E;
+  --color-success: #236A3C;
+  --color-scrim: rgb(21 23 30 / 0.4);
+  --color-overlay-shadow: rgb(21 23 30 / 0.12);
+  --color-kbd: #FFFFFF;
+  --stage-light: none;
+  --shadow-overlay: 0 0 0 1px #7C8294;
+  --radius: 4px;
+  --radius-card: 4px;
+  --radius-pill: 4px;
+  --radius-chip: 2px;
+  --font-outlier: ui-monospace, "SF Mono", "Geist Mono Variable", Menlo, Consolas, "PingFang TC", "Noto Sans TC", monospace;
+  --font-display: "Geist Variable", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", ui-sans-serif, system-ui, sans-serif;
+  --tracking-display: 0;
+}
+
+:root.theme-borderloop.dark {
+  color-scheme: dark;
+  --color-paper: #15171E;
+  --color-paper-2: #1F222C;
+  --color-paper-3: #1A1D25;
+  --color-panel: #1F222C;
+  --color-hover: #272B37;
+  --color-stage: #0D0F15;
+  --color-surround: #0D0F15;
+  --color-ink: #E6E8F0;
+  --color-ink-2: #BCC1D0;
+  --color-muted: #8E94A6;
+  --color-rule: #858B9D;
+  --color-rule-2: #858B9D;
+  --color-track: #353A48;
+  --color-accent: #8FA2F0;
+  --color-accent-hover: #A9B7F5;
+  --color-accent-ink: #15171E;
+  --color-accent-soft: #272B37;
+  --color-focus: #BCC1D0;
+  --color-cool: #8FA2F0;
+  --color-cool-soft: #272B37;
+  --color-warn: #E7984A;
+  --color-ok: #7CC9A0;
+  --color-ok-soft: #1D3A2A;
+  --color-bad: #F08A73;
+  --color-bad-soft: #38211D;
+  --color-error: #F08A73;
+  --color-success: #7CC9A0;
+  --color-scrim: rgb(0 0 0 / 0.6);
+  --color-overlay-shadow: rgb(0 0 0 / 0);
+  --color-kbd: #15171E;
+  --shadow-overlay: 0 0 0 1px #858B9D;
+}
+
+.as-palette-select {
+  max-width: 7.5rem;
+  min-width: 0;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius);
+  background: var(--color-paper-2);
+  color: var(--color-ink);
+  font: inherit;
+}

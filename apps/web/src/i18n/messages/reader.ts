@@ -8,6 +8,7 @@ import {defineMessages} from "../locale.ts";
 export const readerText = defineMessages({
   en: {
     preview: "Artifact preview",
+    palette: {label: "Color palette", reader: "Reader"},
     nav: {
       label: "Primary",
       review: "Review",
@@ -75,6 +76,7 @@ export const readerText = defineMessages({
   },
   "zh-TW": {
     preview: "Artifact 預覽",
+    palette: {label: "配色", reader: "閱讀器"},
     nav: {
       label: "主要",
       review: "審閱",

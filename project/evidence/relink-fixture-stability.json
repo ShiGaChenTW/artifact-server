@@ -1,0 +1,16 @@
+{
+  "recordedAt": "2026-11-26T14:07:37.275389+00:00",
+  "source": "tests/conformance/lfd-005-disk-deletes-renames.test.ts",
+  "diagnostic": "Temporary30 repeated LFD005F cases plus normal B case undercoverage, then restoredsingleFcase",
+  "before": {
+    "passed": 30,
+    "failed": 1
+  },
+  "after": {
+    "passed": 31,
+    "failed": 0
+  },
+  "observed": "Inventory showed renamed.md while sourcebinding freshness remained cachedin-sync",
+  "fixtureChange": "Observe missing source via publicartifactGET before testing relinkhashguards",
+  "securityAssertions": "Same-size impostor rejection, stalehash refusal, and immutablehistory assertions unchanged"
+}

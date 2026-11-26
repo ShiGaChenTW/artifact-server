@@ -1,9 +1,10 @@
 ---
 id: ARTSV-7.4
 title: 右欄常駐留言串與派工閘門
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-25T17:17:00Z'
+updated_date: '2026-11-26T14:23:00Z'
 labels: []
 dependencies:
   - ARTSV-7.1
@@ -20,7 +21,13 @@ ordinal: 37000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 篩選、選取、回覆、標為已解決與現有留言抽屜行為一致
-- [ ] #2 閘門按鈕依狀態啟用並顯示說明
-- [ ] #3 窄版右欄以抽屜開啟，Esc 可關閉並歸還焦點
+- [x] #1 篩選、選取、回覆、標為已解決與現有留言抽屜行為一致
+- [x] #2 閘門按鈕依狀態啟用並顯示說明
+- [x] #3 窄版右欄以抽屜開啟，Esc 可關閉並歸還焦點
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+已實作並完成獨立審查修正。驗證：VITEST_MAX_WORKERS=2 pnpm verify:iteration（exit 0；全部測試與門檻不變）；project/evidence/review-board-iteration.json。B/F：UXR-012–018，project/evidence/review-board.json；協定敵意測試：project/evidence/review-reader-protocol.json。
+<!-- SECTION:NOTES:END -->

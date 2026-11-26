@@ -7,6 +7,7 @@ import {locale, setLocale} from "@/i18n/locale";
 import {commonText} from "@/i18n/messages/common";
 import {readerText} from "@/i18n/messages/reader";
 import {reviewAppText} from "@/i18n/messages/review-app";
+import {PaletteSelect} from "./palette-select.tsx";
 import {ArtifactMark} from "./artifact-mark.tsx";
 import {dashboardPath, filesPath, linkedFoldersPath, trashPath} from "./review-routes.ts";
 
@@ -93,6 +94,7 @@ export function AppTopBar({
         <HugeiconsIcon aria-hidden="true" icon={GlobeIcon} strokeWidth={1.6} />
         <span className="as-topbar__optional-label">{commonText.language.switchTo}</span>
       </button>
+      <PaletteSelect />
       <button aria-label={themeLabel} className="as-icon-button" onClick={onThemeChange} title={themeLabel} type="button">
         <HugeiconsIcon aria-hidden="true" icon={theme === "moon" ? Sun03Icon : Moon02Icon} strokeWidth={1.6} />
       </button>

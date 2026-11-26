@@ -1,0 +1,36 @@
+.as-comments[data-board-mode="true"] {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.as-comments[data-board-mode="true"] > * {
+  flex-shrink: 0;
+}
+
+.as-comments[data-board-mode="true"] .as-comment-list {
+  flex: 1 1 auto;
+  min-height: 4rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.as-comments__board-gate {
+  background: var(--as-surface);
+  border-top: 1px solid var(--as-border);
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.8rem;
+}
+
+.as-comments__board-gate .as-comments__send-all {
+  border: 0;
+  padding: 0;
+}
+
+.as-comments__board-gate > p {
+  color: var(--as-muted);
+  font-size: var(--text-xs);
+  margin: 0;
+}

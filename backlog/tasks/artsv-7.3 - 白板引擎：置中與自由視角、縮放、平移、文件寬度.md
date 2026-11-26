@@ -1,10 +1,10 @@
 ---
 id: ARTSV-7.3
 title: 白板引擎：置中與自由視角、縮放、平移、文件寬度
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-25T17:17:00Z'
-updated_date: '2026-11-25T17:58:00Z'
+updated_date: '2026-11-26T14:23:00Z'
 labels: []
 dependencies:
   - ARTSV-7.1
@@ -21,9 +21,15 @@ ordinal: 36000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 兩種視角、縮放、平移、寬度切換都可用鍵盤操作
-- [ ] #2 縮放後 Plannotator 標註、選取與捲動照常運作
-- [ ] #3 reduced-motion 下沒有動畫
-- [ ] #4 文件卡頂部與上方介面（脈絡列）之間保留看得到的白板留白（至少 24px，參考 Scott 2026-11-26 截圖），置中、符合視窗、縮放與展開脈絡列後都維持，文件卡不可貼齊或被上方介面切掉
-- [ ] #5 設計並記錄文件可顯示的最寬寬度：寫明窄、原始、寬三種寬度的上限值與理由（行長、可讀性、Artifact 本身的版面），在 1440、1920、2560 寬的螢幕上，超過上限時文件置中、兩側留白變大而文件不再變寬；寬度選擇器與符合視窗都不可超過這個上限
+- [x] #1 兩種視角、縮放、平移、寬度切換都可用鍵盤操作
+- [x] #2 縮放後 Plannotator 標註、選取與捲動照常運作
+- [x] #3 reduced-motion 下沒有動畫
+- [x] #4 文件卡頂部與上方介面（脈絡列）之間保留看得到的白板留白（至少 24px，參考 Scott 2026-11-26 截圖），置中、符合視窗、縮放與展開脈絡列後都維持，文件卡不可貼齊或被上方介面切掉
+- [x] #5 設計並記錄文件可顯示的最寬寬度：寫明窄、原始、寬三種寬度的上限值與理由（行長、可讀性、Artifact 本身的版面），在 1440、1920、2560 寬的螢幕上，超過上限時文件置中、兩側留白變大而文件不再變寬；寬度選擇器與符合視窗都不可超過這個上限
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+已實作並完成獨立審查修正。驗證：VITEST_MAX_WORKERS=2 pnpm verify:iteration（exit 0；全部測試與門檻不變）；project/evidence/review-board-iteration.json。B/F：UXR-012–018，project/evidence/review-board.json；協定敵意測試：project/evidence/review-reader-protocol.json。
+<!-- SECTION:NOTES:END -->

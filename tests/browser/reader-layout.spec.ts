@@ -67,6 +67,36 @@ test.describe("Reader layout", () => {
     await stopBrowserFixture(fixture);
   });
 
+  test("board mode preserves the preview, remembers selection and bounds document width", async () => {
+    const {page} = fixture;
+    await page.setViewportSize({height: 900, width: 1440});
+    await openReview(fixture);
+    const frame = page.locator("iframe.as-artifact-frame");
+    await expect(frame).toBeVisible();
+    const original = await frame.elementHandle();
+    await page.getByRole("button", {name: "Review board", exact: true}).click();
+    await expect(page.getByRole("button", {name: "Review board", exact: true})).toHaveAttribute("aria-pressed", "true");
+    expect(await frame.evaluate((element, previous) => element === previous, original)).toBe(true);
+    await page.getByRole("combobox", {name: "Original", exact: true}).selectOption("1040");
+    const checkWidth = async (width: number) => {
+      await page.setViewportSize({height: 900, width});
+      await expect.poll(async () => page.locator(".as-board__sheet").evaluate((element) => {
+        const sheet = element.getBoundingClientRect();
+        const viewport = element.parentElement?.getBoundingClientRect();
+        return sheet.width <= 1041 && viewport !== undefined && sheet.top >= viewport.top + 23;
+      })).toBe(true);
+    };
+    await checkWidth(1440);
+    await checkWidth(1920);
+    await checkWidth(2560);
+    await checkWidth(600);
+    await page.getByRole("button", {name: "Reading", exact: true}).click();
+    expect(await frame.evaluate((element, previous) => element === previous, original)).toBe(true);
+    await page.getByRole("button", {name: "Review board", exact: true}).click();
+    await page.reload();
+    await expect(page.getByRole("button", {name: "Review board", exact: true})).toHaveAttribute("aria-pressed", "true");
+  });
+
   test("UXR-009-B: drawers start closed and toggle from their triggers, narrowing the preview on a wide screen", async () => {
     const {page} = fixture;
     await page.setViewportSize({height: 900, width: 1440});

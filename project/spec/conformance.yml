@@ -5728,3 +5728,129 @@ requirements:
         result: pass
         run: project/evidence/browser.json
         recorded_at: "2026-11-25T13:54:04.853Z"
+
+  - id: UXR-012
+    kind: behavior
+    behavior: "Reading and board modes preserve the same preview and selection; remember mode and fall back to reading on storage failure."
+    owner: web-application
+    source: {file: review-board-spec.html, anchor: mode}
+    acceptance:
+      behavior: {id: UXR-012-B, description: "Mode preserves iframe identity and reload preference."}
+      failure: {id: UXR-012-F, description: "Blocked storage falls back to reading."}
+    deployments: [local]
+    status: verified
+    evidence:
+      - deployment: local
+        tests: [UXR-012-B, UXR-012-F]
+        result: pass
+        run: project/evidence/review-board.json
+        recorded_at: "2026-11-26T07:28:38.075000Z"
+    depends_on: [UXR-009]
+
+  - id: UXR-013
+    kind: behavior
+    behavior: "Board context shows real file, publisher, reviewer, dispatch target and version data, with an accessible collapse control."
+    owner: web-application
+    source: {file: review-board-spec.html, anchor: context}
+    acceptance:
+      behavior: {id: UXR-013-B, description: "Context expands and shows version metadata."}
+      failure: {id: UXR-013-F, description: "Narrow expansion retains a usable preview without horizontal document overflow."}
+    deployments: [local]
+    status: verified
+    evidence:
+      - deployment: local
+        tests: [UXR-013-B, UXR-013-F]
+        result: pass
+        run: project/evidence/review-board.json
+        recorded_at: "2026-11-26T07:28:38.075000Z"
+    depends_on: [UXR-009]
+
+  - id: UXR-014
+    kind: behavior
+    behavior: "Board offers centered/free views, keyboard and pointer pan, bounded zoom and document widths."
+    owner: web-application
+    source: {file: review-board-spec.html, anchor: engine}
+    acceptance:
+      behavior: {id: UXR-014-B, description: "Width caps and 24px top spacing hold at 1440/1920/2560; arrow movement resets."}
+      failure: {id: UXR-014-F, description: "Narrow windows and reduced motion keep the document usable."}
+    deployments: [local]
+    status: verified
+    evidence:
+      - deployment: local
+        tests: [UXR-014-B, UXR-014-F]
+        result: pass
+        run: project/evidence/review-board.json
+        recorded_at: "2026-11-26T07:28:38.075000Z"
+    depends_on: [UXR-009]
+
+  - id: UXR-015
+    kind: behavior
+    behavior: "Outline and status cards can be closed and reopened; headings track active section and counters follow comments."
+    owner: web-application
+    source: {file: review-board-spec.html, anchor: cards}
+    acceptance:
+      behavior: {id: UXR-015-B, description: "Outline navigation activates the section and cards reopen."}
+      failure: {id: UXR-015-F, description: "Both cards can close and return room to the document."}
+    deployments: [local]
+    status: verified
+    evidence:
+      - deployment: local
+        tests: [UXR-015-B, UXR-015-F]
+        result: pass
+        run: project/evidence/review-board.json
+        recorded_at: "2026-11-26T07:28:38.075000Z"
+    depends_on: [UXR-009]
+
+  - id: UXR-016
+    kind: behavior
+    behavior: "Desktop board keeps comments beside document; narrow screens use an accessible drawer. Send and resolve gates use existing states."
+    owner: web-application
+    source: {file: review-board-spec.html, anchor: comments}
+    acceptance:
+      behavior: {id: UXR-016-B, description: "Filters, replies, dispatch and resolve-all use real HTTP application boundaries."}
+      failure: {id: UXR-016-F, description: "Empty and disconnected gates explain disabled actions; narrow Escape restores focus."}
+    deployments: [local]
+    status: verified
+    evidence:
+      - deployment: local
+        tests: [UXR-016-B, UXR-016-F]
+        result: pass
+        run: project/evidence/review-board.json
+        recorded_at: "2026-11-26T07:28:38.075000Z"
+    depends_on: [UXR-009]
+
+  - id: UXR-017
+    kind: behavior
+    behavior: "Bounded outline and marker messages authenticate source/origin, numbered markers select threads, and host connections follow geometry."
+    owner: web-application
+    source: {file: review-board-spec.html, anchor: protocol}
+    acceptance:
+      behavior: {id: UXR-017-B, description: "Markers select cards and connection survives zoom/context expansion."}
+      failure: {id: UXR-017-F, description: "Oversized malformed or spoofed messages are ignored."}
+    deployments: [local]
+    status: verified
+    evidence:
+      - deployment: local
+        tests: [UXR-017-B, UXR-017-F]
+        result: pass
+        run: project/evidence/review-board.json
+        recorded_at: "2026-11-26T07:28:38.075000Z"
+    depends_on: [UXR-009]
+
+  - id: UXR-018
+    kind: behavior
+    behavior: "Independent persisted Reader/Borderloop palettes support light and dark with AA text contrast and 3:1 control boundaries."
+    owner: web-application
+    source: {file: review-board-spec.html, anchor: palette}
+    acceptance:
+      behavior: {id: UXR-018-B, description: "Palette contrast and persistence hold across reading/board/settings."}
+      failure: {id: UXR-018-F, description: "Unknown stored palette falls back to Reader."}
+    deployments: [local]
+    status: verified
+    evidence:
+      - deployment: local
+        tests: [UXR-018-B, UXR-018-F]
+        result: pass
+        run: project/evidence/review-board.json
+        recorded_at: "2026-11-26T07:28:38.075000Z"
+    depends_on: [UXR-009]

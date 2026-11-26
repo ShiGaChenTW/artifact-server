@@ -12,6 +12,8 @@ import {
   type HostMessage,
   type ReviewAnchor,
   type ReviewAnnotation,
+  type ReviewOutlineEntry,
+  type ReviewAnchorRect,
 } from "@/review-frame/protocol";
 
 import {DataPreview} from "./data-preview.tsx";
@@ -70,6 +72,10 @@ export function ReviewPreview({
   onSelectAnnotation,
   onSubmitAnnotation,
   onUnanchoredChange,
+  onBoardOutline,
+  onBoardRects,
+  boardModeActive = false,
+  onBoardZoom,
   opening,
   projectId,
   readOnly,
@@ -92,6 +98,10 @@ export function ReviewPreview({
     path: string,
   ) => Promise<boolean>;
   readonly onUnanchoredChange: (threadIds: readonly string[]) => void;
+  readonly onBoardOutline?: ((entries: readonly ReviewOutlineEntry[]) => void) | undefined;
+  readonly boardModeActive?: boolean;
+  readonly onBoardZoom?: ((delta: number) => void) | undefined;
+  readonly onBoardRects?: ((rects: readonly ReviewAnchorRect[]) => void) | undefined;
   readonly opening: boolean;
   readonly projectId: string;
   readonly readOnly: boolean;
@@ -145,6 +155,10 @@ export function ReviewPreview({
     onSelectAnnotation,
     onSubmitAnnotation,
     onUnanchoredChange,
+    onBoardOutline,
+    onBoardRects,
+    boardModeActive,
+    onBoardZoom,
     projectId,
     readOnly,
     selectionAttempt,
@@ -470,6 +484,10 @@ export function HtmlPreview({
   onSelectAnnotation,
   onSubmitAnnotation,
   onUnanchoredChange,
+  onBoardOutline,
+  onBoardRects,
+  boardModeActive = false,
+  onBoardZoom,
   projectId,
   readOnly,
   renderDocument,
@@ -496,6 +514,10 @@ export function HtmlPreview({
     path: string,
   ) => Promise<boolean>;
   readonly onUnanchoredChange: (threadIds: readonly string[]) => void;
+  readonly onBoardOutline?: ((entries: readonly ReviewOutlineEntry[]) => void) | undefined;
+  readonly boardModeActive?: boolean;
+  readonly onBoardZoom?: ((delta: number) => void) | undefined;
+  readonly onBoardRects?: ((rects: readonly ReviewAnchorRect[]) => void) | undefined;
   readonly projectId: string;
   readonly readOnly: boolean;
   readonly renderDocument: FrameDocumentRenderer;
@@ -568,6 +590,9 @@ export function HtmlPreview({
       const parsed = frameMessageSchema.safeParse(event.data);
       if (!parsed.success) return;
       const message = parsed.data;
+      if (message.type === "as-review-board-zoom") { onBoardZoom?.(message.delta); return; }
+      if (message.type === "as-review-outline") { onBoardOutline?.(message.entries); return; }
+      if (message.type === "as-review-anchor-rects") { onBoardRects?.(message.rects); return; }
       if (message.type === "as-review-ready") {
         setFrameReady(true);
         return;
@@ -610,6 +635,9 @@ export function HtmlPreview({
     onSelectAnnotation,
     onSubmitAnnotation,
     onUnanchoredChange,
+    onBoardOutline,
+    onBoardRects,
+    onBoardZoom,
     postToFrame,
   ]);
 
@@ -641,17 +669,23 @@ export function HtmlPreview({
   }, [annotateModeActive, postToFrame]);
 
   useEffect(() => {
-    if (!initialisedRef.current) return undefined;
-    const frame = window.requestAnimationFrame(() => {
-      postToFrame({
-        isLight,
-        themeTokens: reviewThemeTokens(),
-        type: "as-review-theme",
-        v: reviewProtocolVersion,
+    let frame = 0;
+    const sync = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (!initialisedRef.current) return;
+        postToFrame({isLight, themeTokens: reviewThemeTokens(), type: "as-review-theme", v: reviewProtocolVersion});
       });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [isLight, postToFrame]);
+    };
+    const observer = new MutationObserver(sync);
+    observer.observe(document.documentElement, {attributes: true, attributeFilter: ["class"]});
+    sync();
+    return () => {observer.disconnect(); cancelAnimationFrame(frame);};
+  }, [frameReady, isLight, postToFrame]);
+
+  useEffect(() => {
+    if (frameReady) postToFrame({type: "as-review-board-mode", enabled: boardModeActive, v: reviewProtocolVersion});
+  }, [boardModeActive, frameReady, postToFrame]);
 
   useEffect(() => {
     if (!initialisedRef.current) return;

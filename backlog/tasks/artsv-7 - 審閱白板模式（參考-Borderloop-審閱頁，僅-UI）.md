@@ -1,10 +1,10 @@
 ---
 id: ARTSV-7
 title: 審閱白板模式（參考 Borderloop 審閱頁，僅 UI）
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-25T17:17:00Z'
-updated_date: '2026-11-25T17:48:00Z'
+updated_date: '2026-11-26T14:23:00Z'
 labels: []
 dependencies:
   - ARTSV-6
@@ -24,7 +24,14 @@ ordinal: 33000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 閱讀模式與審閱白板可切換，兩者共用留言、版本、派工資料
-- [ ] #2 新行為有帶 UXR 編號的 B/F 瀏覽器測試並通過
-- [ ] #3 pnpm verify:iteration 通過
+- [x] #1 閱讀模式與審閱白板可切換，兩者共用留言、版本、派工資料
+- [x] #2 新行為有帶 UXR 編號的 B/F 瀏覽器測試並通過
+- [x] #3 pnpm verify:iteration 通過
+- [ ] #4 E2E 完整審閱流程通過（ARTSV-7.9），UAT 已由 Scott 簽核（ARTSV-7.10）
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+ARTSV-7.1–7.9 自動實作與驗證完成；母單第4條仍待 ARTSV-7.10 Scott 實機UAT簽核，不標為完成。未推送或合併。
+<!-- SECTION:NOTES:END -->

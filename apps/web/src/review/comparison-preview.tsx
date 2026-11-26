@@ -12,9 +12,13 @@ const noop = () => undefined;
 export function ComparisonPreview({
   comparison,
   isLight,
+  boardModeActive = false,
+  onBoardZoom,
 }: {
   readonly comparison: ArtifactComparison;
   readonly isLight: boolean;
+  readonly boardModeActive?: boolean;
+  readonly onBoardZoom?: ((delta: number) => void) | undefined;
 }) {
   const [synchronized, setSynchronized] = useState(false);
   const [scroll, setScroll] = useState<{
@@ -34,6 +38,8 @@ export function ComparisonPreview({
       <div className="as-comparison-preview__panes">
         {[comparison.from, comparison.to].map((version) => (
           <ComparisonPane
+            boardModeActive={boardModeActive}
+            onBoardZoom={onBoardZoom}
             isLight={isLight}
             key={version.id}
             onScroll={(progress) => {
@@ -50,11 +56,15 @@ export function ComparisonPreview({
 
 function ComparisonPane({
   isLight,
+  boardModeActive = false,
+  onBoardZoom,
   onScroll,
   position,
   version,
 }: {
   readonly isLight: boolean;
+  readonly boardModeActive?: boolean;
+  readonly onBoardZoom?: ((delta: number) => void) | undefined;
   readonly onScroll: (progress: number) => void;
   readonly position: {readonly progress: number} | null;
   readonly version: Version;
@@ -89,6 +99,8 @@ function ComparisonPane({
     content = <p>{text.unavailable(number)}</p>;
   } else {
     content = <HtmlPreview
+      boardModeActive={boardModeActive}
+      onBoardZoom={onBoardZoom}
       annotateModeActive={false}
       annotations={[]}
       artifactId={artifactId}

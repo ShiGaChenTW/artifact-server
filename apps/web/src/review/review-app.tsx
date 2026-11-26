@@ -82,6 +82,9 @@ import {
   ReviewCommentsInspector,
   type ReviewCommentsInspectorHandle,
 } from "./review-comments.tsx";
+import {BoardContext, BoardCards, BoardConnections, type BoardStats} from "./board-details.tsx";
+import type {ReviewOutlineEntry, ReviewAnchorRect} from "@/review-frame/protocol";
+import {ReviewBoard, boardText, useBoardMode} from "./review-board.tsx";
 import { ReviewPreview } from "./review-preview.tsx";
 import {readReviewTheme, type ReviewTheme} from "./review-theme.ts";
 import {ReviewProjectPicker} from "./review-project-picker.tsx";
@@ -608,11 +611,27 @@ function ArtifactReview({
   const [actionNextCursor, setActionNextCursor] = useState<string | null>(null);
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityError, setActivityError] = useState<Error | null>(null);
+  const boardMode = useBoardMode();
+  const [boardZoomRequest, setBoardZoomRequest] = useState<{readonly id: number; readonly delta: number} | null>(null);
+  const receiveBoardZoom = useCallback((delta: number) => setBoardZoomRequest((current) => ({id: (current?.id ?? 0) + 1, delta})), []);
+  const [boardWide, setBoardWide] = useState(() => window.matchMedia("(min-width: 761px)").matches);
+  const [boardOutline, setBoardOutline] = useState<readonly ReviewOutlineEntry[]>([]);
+  const [boardRects, setBoardRects] = useState<readonly ReviewAnchorRect[]>([]);
+  const [boardStats, setBoardStats] = useState<BoardStats>({open: 0, awaiting: 0, sent: 0, resolved: 0});
+  const [boardPeople, setBoardPeople] = useState<{readonly reviewers: readonly string[]; readonly targets: readonly string[]}>({reviewers: [], targets: []});
+  const [boardCardsVisible, setBoardCardsVisible] = useState(true);
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 761px)");
+    const update = () => setBoardWide(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
   const [sideBySide, setSideBySide] = useState(false);
   const [comparison, setComparison] = useState<ArtifactComparison | null>(null);
   const [comparisonLoading, setComparisonLoading] = useState(false);
   const [comparisonError, setComparisonError] = useState<Error | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<ArtifactVersion | null>(null);
+  useEffect(() => {setBoardOutline([]); setBoardRects([]);}, [selectedPath, selectedVersion?.version.id]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<Error | null>(null);
   const [linkedThreadId, setLinkedThreadId] = useState(initialLocation.threadId ?? null);
@@ -1507,8 +1526,12 @@ function ArtifactReview({
     setDrawer(name, name === "catalog" ? !catalogOpen : rightDrawer !== name);
   };
 
+  const boardComparing = inspectorTab === "compare" && comparison !== null && sideBySide;
+  useEffect(() => {setBoardOutline([]); setBoardRects([]);}, [boardComparing]);
+  const boardCommentsVisible = boardMode.enabled && boardWide && !focusMode && rightDrawer !== "version";
   return (
     <div
+      data-board-mode={boardMode.enabled}
       className="as-app"
       data-catalog-open={catalogOpen}
       data-focus-mode={focusMode}
@@ -1694,6 +1717,10 @@ function ArtifactReview({
             </button>
           )}
           <span className="as-titlebar__grow" />
+          <div className="as-segmented" role="group" aria-label={boardText.modes}>
+            <button className="as-bar-button" type="button" aria-pressed={!boardMode.enabled} onClick={() => boardMode.change(false)}>{boardText.reading}</button>
+            <button className="as-bar-button" type="button" aria-pressed={boardMode.enabled} onClick={() => boardMode.change(true)}>{boardText.board}</button>
+          </div>
           {previewAnnotatable && canComment ? (
             <div aria-label={readerText.title.modeGroup} className="as-segmented" role="group">
               <button
@@ -1726,7 +1753,7 @@ function ArtifactReview({
           />
           <button
             aria-controls="review-comments-drawer"
-            aria-expanded={rightDrawer === "comments"}
+            aria-expanded={rightDrawer === "comments" || boardCommentsVisible}
             aria-keyshortcuts="C ]"
             className="as-bar-button as-bar-button--line"
             onClick={() => toggleDrawer("comments")}
@@ -1800,6 +1827,7 @@ function ArtifactReview({
       )}
 
       <main className="as-workspace">
+        {boardMode.enabled && !focusMode && !boardComparing ? <BoardConnections rects={boardRects} selected={comments.selectedThreadId} /> : null}
         {focusMode ? null : (
           <aside
             aria-label={reviewAppText.catalog.label}
@@ -2124,6 +2152,9 @@ function ArtifactReview({
                 </header>
                 <div className="as-focus-comments__body">
                   <ReviewCommentsInspector
+                    boardMode={boardMode.enabled}
+                    onBoardStats={setBoardStats}
+                    onBoardPeople={setBoardPeople}
                     canComment={canComment}
                     canDeleteAny={canDeleteAnyComment}
                     linkedThreadId={linkedThreadId}
@@ -2139,12 +2170,15 @@ function ArtifactReview({
             </>
           ) : null}
           <div className="as-preview-panel__body" data-preview-kind={previewKind}>
+            <ReviewBoard zoomRequest={boardZoomRequest} enabled={boardMode.enabled && !focusMode} cardsVisible={boardCardsVisible}
+              context={<BoardContext people={boardPeople} version={selectedVersion} path={selectedPath} threads={comments.threads} versions={versions} onVersion={(id) => {setSelectedVersionId(id); setSelectedPath(null);}} />}
+              cards={<BoardCards outline={boardComparing ? [] : boardOutline} stats={boardStats} onSpaceChange={setBoardCardsVisible} />}>
             {detailError === null ? null : (
               <div className="as-preview-error" role="alert">{displayError(detailError)}</div>
             )}
             {!focusMode && inspectorTab === "compare" && comparison !== null && sideBySide
               && comparison.from.artifactId === selectedArtifactId ? (
-              <ComparisonPreview comparison={comparison} isLight={theme === "dawn"} key={`${comparison.from.id}:${comparison.to.id}`} />
+              <ComparisonPreview boardModeActive={boardMode.enabled} onBoardZoom={receiveBoardZoom} comparison={comparison} isLight={theme === "dawn"} key={`${comparison.from.id}:${comparison.to.id}`} />
             ) : selectedArtifactId === null ? (
               <PreviewWelcome />
             ) : detailLoading && details === null ? (
@@ -2156,6 +2190,10 @@ function ArtifactReview({
               />
             ) : (
               <ReviewPreview
+                boardModeActive={boardMode.enabled && !focusMode}
+                onBoardZoom={receiveBoardZoom}
+                onBoardOutline={setBoardOutline}
+                onBoardRects={setBoardRects}
                 annotateModeActive={htmlAnnotateModeActive}
                 annotations={comments.annotations}
                 artifactId={selectedArtifactId}
@@ -2200,6 +2238,7 @@ function ArtifactReview({
                 version={selectedVersion}
               />
             )}
+            </ReviewBoard>
           </div>
         </section>
 
@@ -2207,7 +2246,7 @@ function ArtifactReview({
           <aside
             aria-labelledby="review-comments-drawer-title"
             className="as-drawer as-drawer--right as-comments-drawer"
-            hidden={rightDrawer !== "comments"}
+            hidden={rightDrawer !== "comments" && !boardCommentsVisible}
             id="review-comments-drawer"
           >
             <header className="as-drawer__head">
@@ -2222,12 +2261,15 @@ function ArtifactReview({
                 <HugeiconsIcon icon={Cancel01Icon} strokeWidth={1.6} />
               </IconButton>
             </header>
-            {rightDrawer === "comments" ? (
+            {rightDrawer === "comments" || boardMode.enabled ? (
               <div className="as-drawer__body as-inspector__body">
                 {details === null || selectedVersion === null ? (
                   <InlineState description={reviewAppText.inspector.nothingDescription} title={reviewAppText.inspector.nothingTitle} />
                 ) : (
                   <ReviewCommentsInspector
+                    boardMode={boardMode.enabled}
+                    onBoardStats={setBoardStats}
+                    onBoardPeople={setBoardPeople}
                     canComment={canComment}
                     canDeleteAny={canDeleteAnyComment}
                     linkedThreadId={linkedThreadId}

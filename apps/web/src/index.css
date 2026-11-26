@@ -8,6 +8,7 @@
 @import "./hallmark/tokens.css";
 @import "./themes/plannotator.css";
 @import "./themes/reader.css";
+@import "./themes/borderloop.css";
 @import "./hallmark/base.css" layer(base);
 @import "./theme-tokens.css";
 

@@ -1,12 +1,28 @@
 import { z } from "zod";
 
-import type {
-  HtmlAnnotationTarget,
-  HtmlElementAnchor,
-} from "@plannotator/ui/components/html-viewer";
-
 /** Protocol version carried by every host <-> review-frame message. */
 export const reviewProtocolVersion = 1;
+
+export const reviewOutlineLimit = 200;
+export const reviewAnchorRectLimit = 500;
+const outlineIdSchema = z.string().min(1).max(128);
+const threadIdSchema = z.string().min(1).max(256);
+export const reviewOutlineEntrySchema = z.object({
+  id: outlineIdSchema,
+  title: z.string().min(1).max(300),
+  level: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+  active: z.boolean(),
+});
+/** Numbered marker bounds in the outer review-frame viewport, in CSS pixels. */
+export const reviewAnchorRectSchema = z.object({
+  threadId: threadIdSchema,
+  x: z.number().finite().min(-100_000).max(100_000),
+  y: z.number().finite().min(-100_000).max(100_000),
+  width: z.number().finite().min(0).max(100_000),
+  height: z.number().finite().min(0).max(100_000),
+});
+export type ReviewOutlineEntry = z.infer<typeof reviewOutlineEntrySchema>;
+export type ReviewAnchorRect = z.infer<typeof reviewAnchorRectSchema>;
 
 const versionSchema = z.literal(reviewProtocolVersion);
 
@@ -63,6 +79,8 @@ const themeTokensSchema = z.record(
 
 /** Every message the host is allowed to send into the review frame. */
 export const hostMessageSchema = z.discriminatedUnion("type", [
+  z.object({enabled: z.boolean(), type: z.literal("as-review-board-mode"), v: versionSchema}),
+  z.object({id: outlineIdSchema, type: z.literal("as-review-outline-scroll"), v: versionSchema}),
   z.object({
     annotateModeActive: z.boolean().optional(),
     annotations: z.array(reviewAnnotationSchema),
@@ -112,6 +130,9 @@ export type ReviewTheme = Extract<HostMessage, {type: "as-review-theme"}>;
 
 /** Every message the review frame sends back to the host. */
 export const frameMessageSchema = z.discriminatedUnion("type", [
+  z.object({delta: z.number().finite().min(-2_000).max(2_000), type: z.literal("as-review-board-zoom"), v: versionSchema}),
+  z.object({entries: z.array(reviewOutlineEntrySchema).max(reviewOutlineLimit).refine(entries => new Set(entries.map(entry => entry.id)).size === entries.length && entries.filter(entry => entry.active).length <= 1), type: z.literal("as-review-outline"), v: versionSchema}),
+  z.object({rects: z.array(reviewAnchorRectSchema).max(reviewAnchorRectLimit).refine(rects => new Set(rects.map(rect => rect.threadId)).size === rects.length), type: z.literal("as-review-anchor-rects"), v: versionSchema}),
   z.object({
     progress: z.number().min(0).max(1),
     type: z.literal("as-comparison-scrolled"),
@@ -145,13 +166,16 @@ export const frameMessageSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+/** Private handshake from the opaque artifact relay, never forwarded to host. */
+export const reviewReaderReadySchema = z.object({type: z.literal("as-review-reader-ready"), v: versionSchema});
+
 export type FrameMessage = z.infer<typeof frameMessageSchema>;
 
 /** Build the anchor stored on a thread from what the viewer emitted. */
 export function reviewAnchorFrom(
   originalText: string,
-  htmlAnchor: HtmlElementAnchor | undefined,
-  htmlAdditionalTargets: HtmlAnnotationTarget[] | undefined,
+  htmlAnchor: z.infer<typeof htmlElementAnchorSchema> | undefined,
+  htmlAdditionalTargets: z.infer<typeof htmlAnnotationTargetSchema>[] | undefined,
 ): ReviewAnchor {
   const anchor: ReviewAnchor = {
     htmlAnchor: htmlAnchor ?? null,

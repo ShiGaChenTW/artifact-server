@@ -1,9 +1,10 @@
 ---
 id: ARTSV-7.1
 title: 模式切換：閱讀模式與審閱白板
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-25T17:17:00Z'
+updated_date: '2026-11-26T14:23:00Z'
 labels: []
 dependencies: []
 parent_task_id: ARTSV-7
@@ -19,7 +20,13 @@ ordinal: 34000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 兩種模式可來回切換且不重新載入預覽
-- [ ] #2 重新整理後保留上次的模式
-- [ ] #3 窄版（760px 以下）兩種模式都可用
+- [x] #1 兩種模式可來回切換且不重新載入預覽
+- [x] #2 重新整理後保留上次的模式
+- [x] #3 窄版（760px 以下）兩種模式都可用
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+已實作並完成獨立審查修正。驗證：VITEST_MAX_WORKERS=2 pnpm verify:iteration（exit 0；全部測試與門檻不變）；project/evidence/review-board-iteration.json。B/F：UXR-012–018，project/evidence/review-board.json；協定敵意測試：project/evidence/review-reader-protocol.json。
+<!-- SECTION:NOTES:END -->

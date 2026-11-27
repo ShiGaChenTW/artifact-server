@@ -38,7 +38,11 @@ describe("file management performance (section 13)", {timeout: 240_000}, () => {
       batchOfHundredMoves: true,
     });
     expect(scans.inventoryEntries).toBe(20_000);
+    // The 5 s budget is for a warm scan with no competing requests. Scans timed
+    // under the in-process request loop measure event-loop contention and are
+    // reported for FOV-003-F only (ARTSV-9, project/performance/FINDINGS.md).
     expect(scans.warmScan.samples).toBe(scans.configuration.warmScans);
+    expect(scans.scanUnderTraffic.samples).toBe(scans.configuration.warmScans);
     expect(scans.warmScan.maximumMilliseconds).toBeLessThanOrEqual(scans.budgets.fullScanMilliseconds);
   });
 

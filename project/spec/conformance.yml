@@ -5261,7 +5261,7 @@ requirements:
     owner: operations
     source: {file: file-management-spec.md, anchor: proposed-ledger-entries}
     acceptance:
-      behavior: {id: FOV-003-B, description: "Run the perf baseline on the 100,000-artifact and 20,000-file fixtures and record p95 values within the section 13 budgets."}
+      behavior: {id: FOV-003-B, description: "Run the perf baseline on the 100,000-artifact and 20,000-file fixtures and record p95 values within the section 13 budgets; the linked-folder warm scan is timed with no competing requests."}
       failure: {id: FOV-003-F, description: "During a full linked-folder scan, read and publish p95 latency stays within 10% of the idle baseline, and no scan page holds the write transaction beyond one page."}
     deployments: [local]
     status: verified

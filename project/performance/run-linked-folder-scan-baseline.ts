@@ -39,6 +39,8 @@ async function main(): Promise<void> {
     `first scan (link): ${report.firstScanMilliseconds} ms`,
     `warm full scan: p50 ${report.warmScan.p50Milliseconds} ms, max ${report.warmScan.maximumMilliseconds} ms` +
       ` (budget ${report.budgets.fullScanMilliseconds} ms)`,
+    `warm full scan under request traffic: p50 ${report.scanUnderTraffic.p50Milliseconds} ms,` +
+      ` max ${report.scanUnderTraffic.maximumMilliseconds} ms (no budget)`,
     `read p95: idle ${report.idle.read.p95Milliseconds} ms, during scan ${report.duringScan.read.p95Milliseconds} ms` +
       ` (${ratio(report.duringScan.read.p95Milliseconds, report.idle.read.p95Milliseconds)}, budget +10%)`,
     `publish p95: idle ${report.idle.publish.p95Milliseconds} ms, during scan ${report.duringScan.publish.p95Milliseconds} ms` +

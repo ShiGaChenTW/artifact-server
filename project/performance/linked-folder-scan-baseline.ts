@@ -30,7 +30,11 @@ export const defaultLinkedFolderScanBaselineConfig: LinkedFolderScanBaselineConf
   warmScans: 5,
 };
 
-/** Section 13 budgets: a full warm scan within 5 s, request p95 within 10% of idle while it runs. */
+/**
+ * Section 13 budgets: a full warm scan within 5 s, request p95 within 10% of
+ * idle while it runs. The two are separate budgets: the 5 s applies to a scan
+ * with no competing requests, and the latency ratio is measured with traffic.
+ */
 export const linkedFolderScanBudgets = {
   fullScanMilliseconds: 5_000,
   requestRegressionRatio: 1.1,
@@ -54,7 +58,10 @@ export interface LinkedFolderScanBaselineReport {
   readonly environment: {readonly node: string; readonly platform: string; readonly arch: string};
   readonly firstScanMilliseconds: number;
   readonly inventoryEntries: number;
+  /** Warm full scans with no competing requests; the 5 s budget (FOV-003-B). */
   readonly warmScan: LatencySummary;
+  /** The same scans while one sequential client keeps reading and publishing (FOV-003-F context, no budget). */
+  readonly scanUnderTraffic: LatencySummary;
   readonly idle: {readonly read: LatencySummary; readonly publish: LatencySummary};
   readonly duringScan: {readonly read: LatencySummary; readonly publish: LatencySummary};
   readonly transactions: ScanTransactionObservation;
@@ -107,8 +114,8 @@ const folderLinkSchema = z.object({
 
 /**
  * Link a 20,000-file directory on a real local server and time warm full
- * scans, then compare read and publish latency while scans run against the
- * same operations on the idle server. A second SQLite connection samples the
+ * scans with no other requests, then compare read and publish latency while
+ * further scans run against the same operations on the idle server. A second SQLite connection samples the
  * database at page boundaries: it must always take the write lock without
  * waiting and must see each scan's pages land one committed page at a time.
  */
@@ -164,7 +171,18 @@ export async function runLinkedFolderScanBaseline(
     const windowMilliseconds = Math.max(250, performance.now() - warmUpStarted);
     await traffic.run(windowMilliseconds / 4, null);
 
+    // Time the scan alone first. The in-process client below shares the
+    // server's event loop, so scans timed under its traffic measure contention
+    // rather than the scan (ARTSV-9).
     const scanDurations: number[] = [];
+    for (let scan = 0; scan < config.warmScans; scan += 1) {
+      const scanStarted = performance.now();
+      // eslint-disable-next-line no-await-in-loop
+      await client.scan(link.id);
+      scanDurations.push(performance.now() - scanStarted);
+    }
+
+    const trafficScanDurations: number[] = [];
     const idleTraffic: TrafficRecord = {reads: [], publishes: []};
     const scanTraffic: TrafficRecord = {reads: [], publishes: []};
     for (let scan = 0; scan < config.warmScans; scan += 1) {
@@ -173,7 +191,7 @@ export async function runLinkedFolderScanBaseline(
       // eslint-disable-next-line no-await-in-loop
       await traffic.run(windowMilliseconds, idleTraffic);
       const scanStarted = performance.now();
-      const scanRun = client.scan(link.id).finally(() => scanDurations.push(performance.now() - scanStarted));
+      const scanRun = client.scan(link.id).finally(() => trafficScanDurations.push(performance.now() - scanStarted));
       // eslint-disable-next-line no-await-in-loop
       await Promise.all([scanRun, traffic.until(scanRun, scanTraffic)]);
     }
@@ -181,6 +199,7 @@ export async function runLinkedFolderScanBaseline(
     const idle = {read: summarizeLatencies(idleTraffic.reads), publish: summarizeLatencies(idleTraffic.publishes)};
     const during = {read: summarizeLatencies(scanTraffic.reads), publish: summarizeLatencies(scanTraffic.publishes)};
     const warmScan = summarizeLatencies(scanDurations);
+    const scanUnderTraffic = summarizeLatencies(trafficScanDurations);
     const transactions = summarizeTransactions(samples, config.files);
     return {
       configuration: config,
@@ -188,6 +207,7 @@ export async function runLinkedFolderScanBaseline(
       firstScanMilliseconds,
       inventoryEntries: link.entryCount,
       warmScan,
+      scanUnderTraffic,
       idle,
       duringScan: during,
       transactions,

@@ -4,7 +4,7 @@ title: 改版 commit 並開疊加 PR
 status: In Progress
 assignee: []
 created_date: '2026-11-25T13:19:00Z'
-updated_date: '2026-11-25T13:22:00Z'
+updated_date: '2026-11-27T02:43:00Z'
 labels: []
 dependencies:
   - ARTSV-6.1
@@ -22,5 +22,5 @@ ordinal: 26000
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 PR 已開，描述列出變更摘要與偏離（次要色 #566B7E、輸入框邊框、分享鈕位置、上一個/下一個不循環、儀表板分組列表）
-- [ ] #2 6.1 合併後 PR base 改為 main，沒有衝突
+- [x] #2 6.1 合併後 PR base 改為 main，沒有衝突
 <!-- AC:END -->

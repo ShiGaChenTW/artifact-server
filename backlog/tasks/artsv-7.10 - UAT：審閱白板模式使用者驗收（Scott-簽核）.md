@@ -4,10 +4,13 @@ title: UAT：審閱白板模式使用者驗收（Scott 簽核）
 status: To Do
 assignee: []
 created_date: '2026-11-25T21:21:00Z'
-updated_date: '2026-11-26T14:23:00Z'
+updated_date: '2026-11-27T08:49:00Z'
 labels: []
 dependencies:
   - ARTSV-7.8
+  - ARTSV-7.11
+  - ARTSV-7.12
+  - ARTSV-7.13
 parent_task_id: ARTSV-7
 priority: high
 ordinal: 45000

@@ -15,9 +15,8 @@
 .as-board-context__columns > div { min-width: 0; overflow-wrap: anywhere; }
 .as-board-context__columns ul { max-height: 120px; overflow: auto; padding: 0; list-style: none; }
 .as-board-context button, .as-board-cards button { color: inherit; background: transparent; border: 1px solid var(--as-border); border-radius: 4px; padding: 6px; }
-.as-board-cards { width: 200px; flex: none; padding: 12px 0 12px 12px; color: var(--as-text); overflow: auto; opacity: .8; }
+.as-board-cards { width: 200px; flex: none; padding: 12px 0 12px 12px; color: var(--as-text); overflow: auto; }
 .as-board[data-cards="false"] .as-board-cards { width: auto; max-width: 100px; }
-.as-board-cards:hover, .as-board-cards:focus-within { opacity: 1; }
 .as-board-cards section { background: var(--as-surface); border: 1px solid var(--as-border); padding: 10px; margin-bottom: 12px; border-radius: 4px; }
 .as-board-cards header { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
 .as-board-cards nav button { display: block; width: 100%; text-align: start; border: 0; overflow-wrap: anywhere; }
@@ -45,3 +44,50 @@
 .as-board-cards dl > div { gap: 8px; align-items: baseline; }
 .as-board-cards dt { min-width: 0; overflow-wrap: anywhere; }
 .as-board-cards dd { flex: none; }
+
+/* Measured facts share the reader's mono face; quiet surfaces keep full contrast. */
+.as-board__controls output,
+.as-board-context__facts,
+.as-board-context__history,
+.as-board-cards dd {
+  font-family: var(--font-outlier);
+  font-variant-numeric: tabular-nums;
+}
+.as-board__controls output { min-width: 4ch; text-align: center; }
+.as-board-cards header button { flex: none; min-width: 32px; min-height: 32px; }
+.as-board-context[data-expanded="false"] { display: flex; align-items: center; gap: 12px; }
+.as-board-context[data-expanded="false"] > button { flex: none; }
+.as-board-context[data-expanded="false"] .as-board-context__columns { display: block; min-width: 0; }
+.as-board-context[data-expanded="false"] .as-board-context__columns > div:not(:first-child) {
+  display: none;
+}
+.as-board-cards nav:focus-visible,
+.as-board-cards dl:focus-visible {
+  outline: 2px solid var(--as-text);
+  outline-offset: -2px;
+}
+@media (max-width: 760px) {
+  .as-board-cards { align-items: stretch; }
+  .as-board-cards section {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 4px;
+  }
+  .as-board-cards nav,
+  .as-board-cards dl {
+    min-height: 0;
+    overflow: auto;
+    margin-block: 4px 0;
+  }
+  .as-board-cards header { flex: none; }
+}
+@media (pointer: coarse) {
+  .as-board__controls button,
+  .as-board__controls select,
+  .as-board-context > button,
+  .as-board-cards button,
+  .as-board-cards header button,
+  .as-board__handle { min-width: 44px; min-height: 44px; }
+  .as-board-cards { max-height: 120px; }
+}

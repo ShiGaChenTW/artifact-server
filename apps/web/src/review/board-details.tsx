@@ -21,9 +21,9 @@ export function BoardContext({version, path, threads, versions, onVersion, peopl
     <button type="button" aria-expanded={expanded} aria-controls="as-board-context-details" onClick={() => setExpanded(!expanded)}>{expanded ? boardDetailsText.collapse : boardDetailsText.expand}</button>
     <div className="as-board-context__columns" id="as-board-context-details">
       <div><strong>{path ?? version?.manifest.entryPath ?? boardDetailsText.none}</strong>
-        {expanded && version !== null ? <p>v{version.version.number} · {version.manifest.entries.length} · {formatBytes(version.manifest.entries.reduce((sum, entry) => sum + entry.size, 0))}</p> : null}</div>
+        {expanded && version !== null ? <p className="as-board-context__facts">v{version.version.number} · {version.manifest.entries.length} · {formatBytes(version.manifest.entries.reduce((sum, entry) => sum + entry.size, 0))}</p> : null}</div>
       <div><strong>{boardDetailsText.people}</strong>{expanded ? <><p>{version?.version.publisherPrincipalId ?? boardDetailsText.none}</p><p>{reviewers.join(", ") || boardDetailsText.none}</p><p>{people.targets.join(", ") || boardDetailsText.none}</p></> : null}</div>
-      <div><strong>{boardDetailsText.history}</strong>{expanded ? <ul>{versions.map(({version: item}) => <li key={item.id}><button type="button" aria-current={item.id === version?.version.id ? "true" : undefined} onClick={() => onVersion(item.id)}>v{item.number} · {item.createdAt}</button></li>)}</ul> : null}</div>
+      <div><strong>{boardDetailsText.history}</strong>{expanded ? <ul className="as-board-context__history">{versions.map(({version: item}) => <li key={item.id}><button type="button" aria-current={item.id === version?.version.id ? "true" : undefined} onClick={() => onVersion(item.id)}>v{item.number} · {item.createdAt}</button></li>)}</ul> : null}</div>
     </div>
   </section>;
 }
@@ -37,8 +37,8 @@ export function BoardCards({outline, stats, onSpaceChange}: {readonly outline: r
   const [status, setStatus] = useState(true);
   useEffect(() => onSpaceChange(contents || status), [contents, status, onSpaceChange]);
   return <aside className="as-board-cards" aria-label={boardDetailsText.outline}>
-    {contents ? <section><header><strong>{boardDetailsText.outline}</strong><button type="button" aria-label={`${boardDetailsText.close} ${boardDetailsText.outline}`} onClick={() => setContents(false)}>×</button></header><nav aria-label={boardDetailsText.outline}>{outline.length === 0 ? <p>{boardDetailsText.empty}</p> : outline.map((entry) => <button type="button" key={entry.id} data-level={entry.level} aria-current={entry.active ? "location" : undefined} onClick={() => scrollTo(entry.id)}>{entry.title}</button>)}</nav></section> : <button type="button" onClick={() => setContents(true)}>{boardDetailsText.outline}</button>}
-    {status ? <section><header><strong>{boardDetailsText.status}</strong><button type="button" aria-label={`${boardDetailsText.close} ${boardDetailsText.status}`} onClick={() => setStatus(false)}>×</button></header><dl>{(["open", "awaiting", "sent", "resolved"] as const).map((key) => <div key={key}><dt>{boardDetailsText[key]}</dt><dd>{stats[key]}</dd></div>)}</dl></section> : <button type="button" onClick={() => setStatus(true)}>{boardDetailsText.status}</button>}
+    {contents ? <section><header><strong>{boardDetailsText.outline}</strong><button type="button" aria-label={`${boardDetailsText.close} ${boardDetailsText.outline}`} onClick={() => setContents(false)}>×</button></header><nav aria-label={boardDetailsText.outline} tabIndex={0}>{outline.length === 0 ? <p>{boardDetailsText.empty}</p> : outline.map((entry) => <button type="button" key={entry.id} data-level={entry.level} aria-current={entry.active ? "location" : undefined} onClick={() => scrollTo(entry.id)}>{entry.title}</button>)}</nav></section> : <button type="button" onClick={() => setContents(true)}>{boardDetailsText.outline}</button>}
+    {status ? <section><header><strong>{boardDetailsText.status}</strong><button type="button" aria-label={`${boardDetailsText.close} ${boardDetailsText.status}`} onClick={() => setStatus(false)}>×</button></header><dl aria-label={boardDetailsText.status} tabIndex={0}>{(["open", "awaiting", "sent", "resolved"] as const).map((key) => <div key={key}><dt>{boardDetailsText[key]}</dt><dd>{stats[key]}</dd></div>)}</dl></section> : <button type="button" onClick={() => setStatus(true)}>{boardDetailsText.status}</button>}
   </aside>;
 }
 

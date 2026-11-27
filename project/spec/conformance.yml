@@ -5763,6 +5763,11 @@ requirements:
         result: pass
         run: project/evidence/review-board.json
         recorded_at: "2026-11-26T07:28:38.075000Z"
+      - deployment: local
+        tests: [UXR-013-B, UXR-013-F]
+        result: pass
+        run: project/evidence/review-board-impeccable.json
+        recorded_at: "2026-11-26T19:18:04.494Z"
     depends_on: [UXR-009]
 
   - id: UXR-014
@@ -5799,6 +5804,11 @@ requirements:
         result: pass
         run: project/evidence/review-board.json
         recorded_at: "2026-11-26T07:28:38.075000Z"
+      - deployment: local
+        tests: [UXR-015-B, UXR-015-F]
+        result: pass
+        run: project/evidence/review-board-impeccable.json
+        recorded_at: "2026-11-26T19:18:04.494Z"
     depends_on: [UXR-009]
 
   - id: UXR-016
@@ -5853,4 +5863,9 @@ requirements:
         result: pass
         run: project/evidence/review-board.json
         recorded_at: "2026-11-26T07:28:38.075000Z"
+      - deployment: local
+        tests: [UXR-018-B, UXR-018-F]
+        result: pass
+        run: project/evidence/review-board-impeccable.json
+        recorded_at: "2026-11-26T19:18:04.494Z"
     depends_on: [UXR-009]

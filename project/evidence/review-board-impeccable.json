@@ -1,0 +1,191 @@
+{
+  "numFailedTestSuites": 0,
+  "numFailedTests": 0,
+  "numPassedTestSuites": 4,
+  "numPassedTests": 13,
+  "numPendingTests": 0,
+  "numPendingTestSuites": 0,
+  "numTodoTests": 0,
+  "numTotalTestSuites": 4,
+  "numTotalTests": 13,
+  "startTime": 1795719847904,
+  "success": true,
+  "testResults": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "Board comment workflow"
+          ],
+          "duration": 833,
+          "failureMessages": [],
+          "fullName": "Board comment workflow UXR-016-B: board filters preserve dispatched conversations and gates only unsent open threads",
+          "status": "passed",
+          "title": "UXR-016-B: board filters preserve dispatched conversations and gates only unsent open threads"
+        },
+        {
+          "ancestorTitles": [
+            "Board comment workflow"
+          ],
+          "duration": 494,
+          "failureMessages": [],
+          "fullName": "Board comment workflow UXR-016-F: bulk resolution stops on an HTTP failure and preserves its error",
+          "status": "passed",
+          "title": "UXR-016-F: bulk resolution stops on an HTTP failure and preserves its error"
+        },
+        {
+          "ancestorTitles": [
+            "Board comment workflow"
+          ],
+          "duration": 325,
+          "failureMessages": [],
+          "fullName": "Board comment workflow UXR-016-F: disconnected agents leave send disabled while empty resolve explains its count",
+          "status": "passed",
+          "title": "UXR-016-F: disconnected agents leave send disabled while empty resolve explains its count"
+        }
+      ],
+      "endTime": 1795720009005.973,
+      "message": "",
+      "name": "/Users/scottchen/Developer/-Forks/fork-artifact-server-reader/tests/browser/artsv-board-comments.spec.ts",
+      "startTime": 1795719847904,
+      "status": "passed"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "Review board"
+          ],
+          "duration": 1012,
+          "failureMessages": [],
+          "fullName": "Review board UXR-012-B UXR-013-B UXR-014-B UXR-015-B: mode, context, widths, outline and cards form a continuous review",
+          "status": "passed",
+          "title": "UXR-012-B UXR-013-B UXR-014-B UXR-015-B: mode, context, widths, outline and cards form a continuous review"
+        },
+        {
+          "ancestorTitles": [
+            "Review board"
+          ],
+          "duration": 1125,
+          "failureMessages": [],
+          "fullName": "Review board UXR-017-B UXR-017-F: markers connect to selected cards after transforms and ignore spoofed messages",
+          "status": "passed",
+          "title": "UXR-017-B UXR-017-F: markers connect to selected cards after transforms and ignore spoofed messages"
+        },
+        {
+          "ancestorTitles": [
+            "Review board"
+          ],
+          "duration": 755,
+          "failureMessages": [],
+          "fullName": "Review board UXR-017-F: comparison clears single-document outline and geometry",
+          "status": "passed",
+          "title": "UXR-017-F: comparison clears single-document outline and geometry"
+        },
+        {
+          "ancestorTitles": [
+            "Review board"
+          ],
+          "duration": 607,
+          "failureMessages": [],
+          "fullName": "Review board UXR-012-F UXR-013-F UXR-014-F UXR-015-F UXR-016-F: narrow board and storage failure recover",
+          "status": "passed",
+          "title": "UXR-012-F UXR-013-F UXR-014-F UXR-015-F UXR-016-F: narrow board and storage failure recover"
+        }
+      ],
+      "endTime": 1795720009005.973,
+      "message": "",
+      "name": "/Users/scottchen/Developer/-Forks/fork-artifact-server-reader/tests/browser/e2e-review-board.spec.ts",
+      "startTime": 1795719847904,
+      "status": "passed"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "ARTSV-7.6 Borderloop palette"
+          ],
+          "duration": 701,
+          "failureMessages": [],
+          "fullName": "ARTSV-7.6 Borderloop palette UXR-018-B: Borderloop text and control boundaries meet AA in moon",
+          "status": "passed",
+          "title": "UXR-018-B: Borderloop text and control boundaries meet AA in moon"
+        },
+        {
+          "ancestorTitles": [
+            "ARTSV-7.6 Borderloop palette"
+          ],
+          "duration": 734,
+          "failureMessages": [],
+          "fullName": "ARTSV-7.6 Borderloop palette UXR-018-B: Borderloop text and control boundaries meet AA in dawn",
+          "status": "passed",
+          "title": "UXR-018-B: Borderloop text and control boundaries meet AA in dawn"
+        },
+        {
+          "ancestorTitles": [
+            "ARTSV-7.6 Borderloop palette"
+          ],
+          "duration": 273,
+          "failureMessages": [],
+          "fullName": "ARTSV-7.6 Borderloop palette UXR-018-F: unknown stored palettes fall back safely and remain selectable",
+          "status": "passed",
+          "title": "UXR-018-F: unknown stored palettes fall back safely and remain selectable"
+        },
+        {
+          "ancestorTitles": [
+            "ARTSV-7.6 Borderloop palette"
+          ],
+          "duration": 542,
+          "failureMessages": [],
+          "fullName": "ARTSV-7.6 Borderloop palette UXR-018-B: palette and light/dark choices persist across reading, board and settings",
+          "status": "passed",
+          "title": "UXR-018-B: palette and light/dark choices persist across reading, board and settings"
+        }
+      ],
+      "endTime": 1795720009005.973,
+      "message": "",
+      "name": "/Users/scottchen/Developer/-Forks/fork-artifact-server-reader/tests/browser/review-palette.spec.ts",
+      "startTime": 1795719847904,
+      "status": "passed"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "duration": 355,
+          "failureMessages": [],
+          "fullName": "ARTSV-7.5-B ARTSV-7.5-F: real frame outlines, collision-free numbered markers, scroll geometry and source checks",
+          "status": "passed",
+          "title": "ARTSV-7.5-B ARTSV-7.5-F: real frame outlines, collision-free numbered markers, scroll geometry and source checks"
+        },
+        {
+          "ancestorTitles": [],
+          "duration": 202,
+          "failureMessages": [],
+          "fullName": "ARTSV-7.5-B: modifier wheel zoom is relayed only while board mode owns the artifact surface",
+          "status": "passed",
+          "title": "ARTSV-7.5-B: modifier wheel zoom is relayed only while board mode owns the artifact surface"
+        }
+      ],
+      "endTime": 1795720009005.973,
+      "message": "",
+      "name": "/Users/scottchen/Developer/-Forks/fork-artifact-server-reader/tests/browser/review-reader-frame.spec.ts",
+      "startTime": 1795719847904,
+      "status": "passed"
+    }
+  ],
+  "verification": {
+    "startedAt": "2026-11-26T19:00:57.879Z",
+    "finishedAt": "2026-11-26T19:18:04.494Z",
+    "exitCode": 0,
+    "signal": null,
+    "command": "VITEST_MAX_WORKERS=2 pnpm verify:iteration",
+    "sourceHashes": {
+      "apps/web/src/review/board-details.tsx": "2763851985abcaf84e9c68b716595537cd1f107ee2a3134c53c9f8b5b4639598",
+      "apps/web/src/review/review-board.css": "39475567fafe4d2687e4711fdd8b2eff34d4560754b68144063de8138ebbb4e5",
+      "tests/browser/e2e-review-board.spec.ts": "1981c560c310a04dd984eb15e705287cac02931bf382b1abbce60327f4667c4b"
+    },
+    "detector": [],
+    "humanUat": "pending"
+  }
+}

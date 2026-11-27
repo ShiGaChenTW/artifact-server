@@ -156,6 +156,18 @@ test.describe("Review board", () => {
     await page.getByRole("button", {name: "Expand context", exact: true}).click();
     await expect.poll(() => page.locator("iframe.as-artifact-frame").evaluate((node) => node.getBoundingClientRect().height)).toBeGreaterThan(100);
     await page.getByRole("button", {name: "Collapse context", exact: true}).click();
+    // Narrow cards retain independently scrollable, keyboard-accessible content.
+    const counts = page.locator(".as-board-cards dl");
+    await counts.focus();
+    await counts.press("End");
+    await expect.poll(() => counts.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+    const outlineNavigation = page.getByRole("navigation", {name: "Document outline"});
+    await outlineNavigation.getByRole("button", {name: "Decision", exact: true}).focus();
+    expect(await outlineNavigation.evaluate((node) => {
+      const selected = document.activeElement?.getBoundingClientRect();
+      const bounds = node.getBoundingClientRect();
+      return selected !== undefined && selected.top >= bounds.top && selected.bottom <= bounds.bottom + 1;
+    })).toBe(true);
     const comments = page.getByRole("button", {name: /^Comments \d/u});
     await comments.click();
     await expect(page.locator("#review-comments-drawer")).toBeVisible();

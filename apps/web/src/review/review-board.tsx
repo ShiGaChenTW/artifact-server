@@ -85,7 +85,7 @@ export function ReviewBoard({enabled, children, context, cards, cardsVisible, zo
       onPointerUp={() => {drag.current = null;}}
       onPointerCancel={() => {drag.current = null;}}
     >
-      <div className="as-board__sheet" style={enabled ? {width: documentWidth, height: `calc((100% - 48px) / ${scale})`, transform: `translate(${position.x}px, ${Math.max(0, position.y)}px) scale(${scale})`, marginBottom: 24} : undefined}>
+      <div className="as-board__sheet" style={enabled ? {width: documentWidth, height: `calc(100% / ${scale})`, transform: `translate(${position.x}px, ${Math.max(0, position.y)}px) scale(${scale})`} : undefined}>
         {enabled && free ? <button className="as-board__handle" type="button" aria-label={boardText.move}
           onKeyDown={(event) => {
             const step = event.shiftKey ? 50 : 10;

@@ -40,7 +40,7 @@ export interface BrowserFixture {
 
 export async function startBrowserFixture(
   browser: Browser,
-  options: {readonly timezoneId?: string} = {},
+  options: Parameters<Browser["newContext"]>[0] = {},
 ): Promise<BrowserFixture> {
   const installation = await createTestInstallation();
   const server = await startTestServer(installation);

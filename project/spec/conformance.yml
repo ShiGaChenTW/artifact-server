@@ -5754,7 +5754,7 @@ requirements:
     source: {file: review-board-spec.html, anchor: context}
     acceptance:
       behavior: {id: UXR-013-B, description: "Context expands and shows version metadata."}
-      failure: {id: UXR-013-F, description: "Narrow expansion retains a usable preview without horizontal document overflow."}
+      failure: {id: UXR-013-F, description: "Narrow expansion takes the cards' place, keeps the preview at least half the board height and no shorter than when collapsed, without horizontal document overflow."}
     deployments: [local]
     status: verified
     evidence:

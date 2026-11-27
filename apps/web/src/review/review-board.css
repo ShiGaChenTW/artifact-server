@@ -91,3 +91,11 @@
   .as-board__handle { min-width: 44px; min-height: 44px; }
   .as-board-cards { max-height: 120px; }
 }
+/* Narrow screens keep at least half the viewport for the document: controls
+   stay one scrollable row, and expanded context takes the cards' place until
+   it collapses again (UXR-013). */
+@media (max-width: 760px) {
+  .as-board__controls { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; }
+  .as-board__controls > * { flex: none; }
+  .as-board-context[data-expanded="true"] ~ .as-board__stage .as-board-cards { display: none; }
+}

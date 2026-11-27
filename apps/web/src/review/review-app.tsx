@@ -108,6 +108,8 @@ const DashboardPage = lazy(async () => ({
 }));
 
 type InspectorTab = "activity" | "compare" | "details" | "files" | "versions";
+/** A cleared comparison takes its tab with it; the Versions tab is where a new one starts. */
+const leaveClearedComparison = (tab: InspectorTab): InspectorTab => tab === "compare" ? "versions" : tab;
 type RightDrawer = "comments" | "version";
 type DrawerName = "catalog" | RightDrawer;
 type ArtifactListLoadResult = "failed" | "loaded" | "skipped";
@@ -631,7 +633,6 @@ function ArtifactReview({
   const [comparisonLoading, setComparisonLoading] = useState(false);
   const [comparisonError, setComparisonError] = useState<Error | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<ArtifactVersion | null>(null);
-  useEffect(() => {setBoardOutline([]); setBoardRects([]);}, [selectedPath, selectedVersion?.version.id]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<Error | null>(null);
   const [linkedThreadId, setLinkedThreadId] = useState(initialLocation.threadId ?? null);
@@ -922,6 +923,7 @@ function ArtifactReview({
       setActions([]);
       setActionNextCursor(null);
       setComparison(null);
+      setInspectorTab(leaveClearedComparison);
       setSelectedVersion(null);
       return undefined;
     }
@@ -929,6 +931,7 @@ function ArtifactReview({
     setActions([]);
     setActionNextCursor(null);
     setComparison(null);
+    setInspectorTab(leaveClearedComparison);
     setDetailLoading(true);
     setDetailError(null);
     void (async () => {
@@ -1533,6 +1536,10 @@ function ArtifactReview({
 
   const boardComparing = inspectorTab === "compare" && comparison !== null && sideBySide;
   useEffect(() => {setBoardOutline([]); setBoardRects([]);}, [boardComparing]);
+  // Geometry belongs to the shown document. Naming the entry file it already
+  // shows (as selecting a comment does) keeps the document, whose bridge only
+  // reports changes, so the board must keep what it last reported.
+  useEffect(() => {setBoardOutline([]); setBoardRects([]);}, [previewPath, selectedVersion?.version.id]);
   const boardCommentsVisible = boardMode.enabled && boardWide && !focusMode && rightDrawer !== "version";
   return (
     <div

@@ -703,9 +703,14 @@ function ArtifactReview({
   const catalogRequestGenerationRef = useRef(0);
   // Focus follows a drawer opened or closed from the keyboard, once the
   // drawer has rendered: to its heading on open, back to its trigger on close.
+  // A key pressed while an earlier render's effects are still pending flushes
+  // those effects first; they see the drawer in its old state and must leave
+  // the request for the render that actually opens or closes it.
   useEffect(() => {
     const pending = pendingDrawerFocusRef.current;
     if (pending === null) return;
+    const rendered = pending.name === "catalog" ? catalogOpen : rightDrawer === pending.name;
+    if (rendered !== (pending.target === "heading")) return;
     pendingDrawerFocusRef.current = null;
     const target = pending.target === "heading"
       ? drawerHeadingRefs[pending.name].current

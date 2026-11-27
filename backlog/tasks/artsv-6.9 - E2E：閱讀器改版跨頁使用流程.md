@@ -1,9 +1,10 @@
 ---
 id: ARTSV-6.9
 title: E2E：閱讀器改版跨頁使用流程
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-25T21:20:00Z'
+updated_date: '2026-11-27T09:38:21Z'
 labels: []
 dependencies:
   - ARTSV-6.2
@@ -20,8 +21,16 @@ ordinal: 42000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 六個流程都有 spec，測試名稱帶它跨過的需求編號（UXR、FOV、TRS、FLD、LANG 等）
-- [ ] #2 pnpm test:web 全數通過，evidence JSON 有這些測試
-- [ ] #3 桌面與 390px 兩種寬度都通過，失敗時附 trace 與截圖
-- [ ] #4 發現的問題已修正或另開 bug 單並連回本票
+- [x] #1 六個流程都有 spec，測試名稱帶它跨過的需求編號（UXR、FOV、TRS、FLD、LANG 等）
+- [x] #2 pnpm test:web 全數通過，evidence JSON 有這些測試
+- [x] #3 桌面與 390px 兩種寬度都通過，失敗時附 trace 與截圖
+- [x] #4 發現的問題已修正或另開 bug 單並連回本票
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-27：tests/browser/e2e-reader-journeys.spec.ts 六個流程 × 1440/390 共 12 個測試。pnpm check 通過、pnpm test:web 92/92，evidence/browser.json 含 12 個標題；之後重跑閱讀器相關 19/19。playwright.config 加 screenshot: only-on-failure（trace 原本就 retain-on-failure）。
+找到並修正一個 bug：載入中按 T/C/V，抽屜會開但焦點留在 body（UXR-010），原因是過期的 effect 先消耗了焦點請求；review-app.tsx 改成抽屜狀態符合請求時才處理。修正後流程 2、6 連跑 16/16。
+與票面描述不同、照實際 UI 測：儀表板「需要你」的新版本群組只列上次開啟後的新版本；閱讀器底列路徑是 entry path（index.html），資料夾位置改驗版本抽屜的『位置』與目錄麵包屑；還原的實際動作叫『設為目前版本』；發布走 HTTP helper，沒測 CLI/MCP。
+<!-- SECTION:NOTES:END -->

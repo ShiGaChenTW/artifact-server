@@ -1,10 +1,10 @@
 ---
 id: ARTSV-9
 title: CI 上連結資料夾暖掃描超過 5 秒規格上限（FOV-003-B）
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-27T02:43:00Z'
-updated_date: '2026-11-27T17:17:07Z'
+updated_date: '2026-11-27T19:11:53Z'
 labels: []
 dependencies: []
 priority: high
@@ -21,12 +21,14 @@ PR #2 合併前手動跑兩次 CI（runs 45921912765、45928581032），tests/sm
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 查明 CI 超標是平行負載還是掃描本身太慢，結論與量測數字寫進 project/performance/FINDINGS.md
-- [ ] #2 main 上的 CI（含 macOS portability）全綠，且 FOV-003-B 仍以 5 秒規格預算斷言
-- [ ] #3 fork 的 PR 會自動觸發 CI，或已記錄不能觸發的原因與替代流程
+- [x] #2 main 上的 CI（含 macOS portability）全綠，且 FOV-003-B 仍以 5 秒規格預算斷言
+- [x] #3 fork 的 PR 會自動觸發 CI，或已記錄不能觸發的原因與替代流程
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-28：根因是 FOV-003-B 只量了『旁邊有同 process 請求迴圈』的掃描，量到的是事件迴圈競爭。CI 4 vCPU：單純掃描 1.6–1.8 s、有負載 7.8–8.4 s；smoke 單獨跑也失敗，排除平行測試因素（實驗 run 45997721753）。修正在 PR #4（fix/artsv-9-scan-budget）：改量無負載暖掃描、5 s 不變，FINDINGS.md 記錄。順帶修 macos-14→15、Gitleaks 誤報、CMT-017/PRV-007 時序。CI 除 macOS 全綠；macOS 首次跑 114/115，lifecycle-cli foundation 測試 30 s 逾時（本機 5.5 s），重跑因 GitHub macOS 容量不足取消。AC3：PR #4 的 pull_request 事件有自動觸發 CI；PR #2（11/25）沒有，原因未明；push 到 main 是否觸發待 PR #4 合併時確認。
+
+2026-11-28：PR #4 合併（d61e807）。main push 自動觸發 CI：Full / Linux iteration gate 通過、Security 通過（run 46051581432、46051581373）。macOS 仍因 GitHub arm64 容量不足未取得 runner；依 Scott 決定拆到 ARTSV-10，AC #2 的 macOS 部分由 ARTSV-10 追蹤。AC #3：pull_request 與 push 事件現已自動觸發。
 <!-- SECTION:NOTES:END -->

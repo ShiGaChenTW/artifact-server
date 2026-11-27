@@ -122,6 +122,29 @@ parallel test files can move an idle p95 enough to misclassify a small
 absolute change, so the ordinary smoke run leaves the relative threshold to
 the isolated test and the repeated baseline above.
 
+### Scan time under request traffic (ARTSV-9)
+
+The 5 s budget applies to a warm scan with no competing requests. Until
+November 27, 2026 the smoke test timed only scans that ran beside the
+sequential request loop, and that loop runs in the same Node.js process as the
+server. Those timings measured event-loop contention, not the scan. On GitHub's
+4-vCPU `ubuntu-latest` runner the FOV-003-B check failed at 7.6 to 9.5 s, both
+alone and inside the full suite, while the scan itself was well inside budget:
+
+| Machine | Warm scan alone, p50 / max | Warm scan beside request loop, p50 / max |
+| --- | ---: | ---: |
+| Apple M5 Max, Node.js 24.15.0 (2 runs × 6 scans) | 0.86–0.89 / 0.99–1.04 s | 1.45–1.49 / 1.63–1.68 s |
+| GitHub `ubuntu-latest`, 4 vCPU (2 runs × 6 scans, run 45997721753) | 1.61–1.68 / 1.73–1.79 s | 7.76–7.92 / 8.21–8.40 s |
+
+The baseline now times warm scans alone for FOV-003-B and reports scans beside
+traffic as `scanUnderTraffic`, which has no budget. Open risk: on a 4-vCPU
+machine, a client that keeps the server busy with no pause stretches a scan
+about five times. On that runner publish p95 during scans was also +21%, over
+the +10% FOV-003-F budget. That check is enforced only in the controlled
+isolated run described above, and it passed on the M5 Max. If continuous
+traffic during scans becomes a real workload, run the reconciliation off the
+main event loop entirely, not only the page writes.
+
 ## Measured baseline
 
 Machine: Apple M5 Max, Node.js 24.15.0, local APFS storage.

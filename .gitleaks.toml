@@ -2,3 +2,12 @@ title = "Artifact Server Gitleaks configuration"
 
 [extend]
 useDefault = true
+
+# Test fixtures name idempotency keys such as "lfd-001-anonymous-01", which the
+# default generic-api-key rule mistakes for secrets. Allow only those lines in tests.
+[[allowlists]]
+description = "Idempotency keys in test fixtures"
+condition = "AND"
+paths = ['''^tests/''']
+regexTarget = "line"
+regexes = ['''(?i)idempotency-?key''']

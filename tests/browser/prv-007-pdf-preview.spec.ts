@@ -94,11 +94,18 @@ test.describe("PDF preview in the browser's viewer", () => {
         },
       );
       expect(typedToApplication.status).toBe(415);
-      const pdfDocumentNavigation = await fixture.page.goto(
-        fileUrl(fixture, published, "media", "docs/report.pdf"),
-      );
-      expect(pdfDocumentNavigation?.headers()["content-type"]).not.toBe("application/pdf");
-      expect(pdfDocumentNavigation?.ok()).toBe(false);
+      // Navigate a separate tab of the same signed-in context. Leaving Review
+      // while it frames the PDF viewer occasionally closed the page on CI.
+      const documentTab = await fixture.page.context().newPage();
+      try {
+        const pdfDocumentNavigation = await documentTab.goto(
+          fileUrl(fixture, published, "media", "docs/report.pdf"),
+        );
+        expect(pdfDocumentNavigation?.headers()["content-type"]).not.toBe("application/pdf");
+        expect(pdfDocumentNavigation?.ok()).toBe(false);
+      } finally {
+        await documentTab.close();
+      }
       const download = await fetch(fileUrl(fixture, published, "file", "docs/report.pdf"), {
         headers: {Authorization: `Bearer ${fixture.installation.apiToken}`},
       });

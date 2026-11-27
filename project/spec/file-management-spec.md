@@ -506,7 +506,7 @@ Measured with `pnpm perf:baseline` conventions on the local SQLite deployment, o
 | Move one artifact across projects | 200 versions, 500 threads | ≤ 250 ms |
 | Trash a folder subtree | 10,000 artifacts | ≤ 2 s, one transaction |
 | Batch of 100 moves | — | ≤ 1.5 s |
-| Full scan of a linked folder | 20,000 files, warm cache | ≤ 5 s total; no request-path p95 regression above 10% while it runs |
+| Full scan of a linked folder | 20,000 files, warm cache | ≤ 5 s total with no competing requests; no request-path p95 regression above 10% while it runs |
 | Watch hint → inventory visible | single file save | ≤ 2 s |
 
 Indexes (SQLite): `artifacts(project_id, folder_id, deleted_at, search_name)`, `artifacts(deleted_at, file_kind, current_version_created_at DESC, id)`, `artifacts(deleted_at, current_version_created_at DESC, id)`, `folders(project_id, parent_folder_id, name_key)` (unique where live), `folder_inventory(folder_link_id, state, relative_path)`. `current_version_created_at` and `current_size` are denormalized on the artifact at commit and restore, so the overview never joins the version tables per row. **[Assumption]** The denormalization is acceptable. The alternative is a join through `versions` and an aggregate over `manifest_entries` on every page.

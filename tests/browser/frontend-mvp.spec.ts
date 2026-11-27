@@ -1215,9 +1215,13 @@ test.describe("Artifact Server frontend MVP", () => {
       });
       const focusShare = focusControls.getByRole("button", {exact: true, name: "Share"});
       const exitFullScreen = focusControls.getByRole("button", {name: "Exit full screen"});
-      expect((await focusShare.boundingBox())?.x).toBeLessThan(
-        (await exitFullScreen.boundingBox())?.x ?? 0,
-      );
+      // The toolbar slides in, so read both buttons in the same frame: two
+      // separate boundingBox calls can straddle the transition and misorder them.
+      const exitHandle = await exitFullScreen.elementHandle();
+      expect(await focusShare.evaluate((shareButton, exitButton) => (
+        exitButton !== null
+        && shareButton.getBoundingClientRect().left < exitButton.getBoundingClientRect().left
+      ), exitHandle)).toBe(true);
       await focusShare.click();
       await expect(share.getByRole("heading", {name: "Share fixture"})).toBeVisible();
       await expect(share.getByText(exactReviewLink.toString(), {exact: true})).toBeVisible();

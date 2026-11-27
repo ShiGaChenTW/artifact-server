@@ -27,7 +27,13 @@ const sessionSchema = z.object({
       provider: z.literal("cloudflare-artifacts"),
       providerState: z.literal("misconfigured"),
     }).strict(),
+    folders: z.boolean(),
+    crossProjectMove: z.boolean(),
+    trash: z.boolean(),
+    fileOverview: z.boolean(),
+    batch: z.boolean(),
     linkedArtifacts: z.boolean(),
+    linkedFolders: z.boolean(),
   }).strict(),
 }).loose();
 const linkedPublicationSchema = z.object({

@@ -18,6 +18,7 @@ import {
 import {startLocalServer} from "../local/start-local-server.js";
 import {
   parseLinkRoots,
+  parseLinkedFolderWatchMode,
   parseLinkedFilesMode,
 } from "../lifecycle/runtime-configuration.js";
 import {loadNodeGitHistoryConfiguration} from
@@ -28,7 +29,10 @@ import {runCliEffect} from "./run-cli-effect.js";
 import {localOwnerBrowserAccess} from "../core/browser-access.js";
 import {configureLifecycleCommands} from "./lifecycle-commands.js";
 import {configureCliAuthCommands} from "./cli-auth-commands.js";
+import {configureFolderCommands} from "./folder-commands.js";
+import {configureFileCommands} from "./file-commands.js";
 import {configureLinkCommand} from "./link-command.js";
+import {configureLinkFolderCommands} from "./link-folder-command.js";
 import {configureMcpOnboardingCommands} from "./mcp-onboarding-commands.js";
 import {configurePublishCommand} from "./publish-command.js";
 import {configureGitHistoryCommands} from "./git-history-commands.js";
@@ -78,6 +82,9 @@ configureGitHistoryCommands(program, {
 configureLinkCommand(program, {
   defaultProfileDirectory: defaultUserDataDirectory,
 });
+configureFolderCommands(program, defaultUserDataDirectory);
+configureLinkFolderCommands(program, defaultUserDataDirectory);
+configureFileCommands(program, defaultUserDataDirectory);
 configureOpenManagementCommand(program, defaultUserDataDirectory);
 configureDirectLocalStart(program);
 configureLifecycleCommands(program, {build: productBuild});
@@ -126,6 +133,7 @@ function configureDirectLocalStart(programToConfigure: Command): void {
       writeGitHistoryConfigurationWarnings(gitHistory);
       const linkedFiles = await runCliEffect(parseLinkedFilesMode(process.env));
       const linkRoots = await runCliEffect(parseLinkRoots(process.env));
+      const linkedFolderWatch = await runCliEffect(parseLinkedFolderWatchMode(process.env));
       const developmentProxyCredential =
         process.env["ARTIFACT_SERVER_DEVELOPMENT_PROXY_CREDENTIAL"];
       const localServerConfig = {
@@ -139,6 +147,7 @@ function configureDirectLocalStart(programToConfigure: Command): void {
         dataDirectory,
         gitHistory,
         linkedFiles,
+        linkedFolderWatch,
         linkRoots,
         localBootstrapToken: browserBootstrapToken,
         port,

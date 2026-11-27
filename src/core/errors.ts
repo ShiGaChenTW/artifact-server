@@ -1,7 +1,22 @@
+import type {FolderRecord} from "./folders.js";
+
 import { Schema } from "effect";
 
 /** Stable error codes exposed by Artifact Server protocols. */
 export const errorCodes = {
+  folderNotFound: "FOLDER_NOT_FOUND",
+  folderCycle: "FOLDER_CYCLE",
+  folderLimit: "FOLDER_LIMIT",
+  folderNotEmpty: "FOLDER_NOT_EMPTY",
+  folderRevisionConflict: "FOLDER_REVISION_CONFLICT",
+  nameConflict: "NAME_CONFLICT",
+  dispatchHeld: "DISPATCH_HELD",
+  gitHistoryEnabled: "GIT_HISTORY_ENABLED",
+  moveTooLarge: "MOVE_TOO_LARGE",
+  notInTrash: "NOT_IN_TRASH",
+  artifactInTrash: "ARTIFACT_IN_TRASH",
+  purgeConfirmationMismatch: "PURGE_CONFIRMATION_MISMATCH",
+  trashTooLarge: "TRASH_TOO_LARGE",
   agentNotFound: "AGENT_NOT_FOUND",
   artifactNotFound: "ARTIFACT_NOT_FOUND",
   artifactMutationConflict: "ARTIFACT_MUTATION_CONFLICT",
@@ -33,6 +48,15 @@ export const errorCodes = {
   sourceDrifted: "SOURCE_DRIFTED",
   sourceMissing: "SOURCE_MISSING",
   sourceUnreadable: "SOURCE_UNREADABLE",
+  sourceMoved: "SOURCE_MOVED",
+  entryNotCapturable: "ENTRY_NOT_CAPTURABLE",
+  folderLinkNotFound: "FOLDER_LINK_NOT_FOUND",
+  inventoryEntryNotFound: "INVENTORY_ENTRY_NOT_FOUND",
+  linkOverlap: "LINK_OVERLAP",
+  linkLimit: "LINK_LIMIT",
+  captureBatchTooLarge: "CAPTURE_BATCH_TOO_LARGE",
+  folderLinkRevisionConflict: "FOLDER_LINK_REVISION_CONFLICT",
+  folderLinkInTrash: "FOLDER_LINK_IN_TRASH",
   publishConflict: "PUBLISH_CONFLICT",
   projectArchived: "PROJECT_ARCHIVED",
   projectConflict: "PROJECT_CONFLICT",
@@ -50,6 +74,44 @@ export const errorCodes = {
 export type ErrorCode = (typeof errorCodes)[keyof typeof errorCodes];
 
 const messageField = {message: Schema.String};
+
+/** A folder command was refused without writing any metadata. */
+export class FolderFailure extends Schema.TaggedError<FolderFailure>()(
+  "FolderFailure",
+  {
+    ...messageField,
+    reason: Schema.Literals(["not-found", "cycle", "limit", "not-empty", "name-conflict", "revision", "invalid-name"]),
+    conflictingFolderId: Schema.optional(Schema.String),
+    current: Schema.optional(Schema.Struct({
+      id: Schema.String,
+      installationId: Schema.String,
+      projectId: Schema.String,
+      parentFolderId: Schema.NullOr(Schema.String),
+      name: Schema.String,
+      nameKey: Schema.String,
+      revision: Schema.Number,
+      createdAt: Schema.String,
+      updatedAt: Schema.String,
+    }) satisfies Schema.Schema<FolderRecord>),
+  },
+) {}
+
+/** A cross-project move was refused before any record changed scope. */
+export class ProjectMoveRefused extends Schema.TaggedError<ProjectMoveRefused>()(
+  "ProjectMoveRefused",
+  {...messageField, reason: Schema.Literals(["dispatch-held", "git-history-enabled", "too-large"])},
+) {}
+
+/** A trash, recover, or purge command was refused without writing anything. */
+export class TrashFailure extends Schema.TaggedError<TrashFailure>()(
+  "TrashFailure",
+  {
+    ...messageField,
+    reason: Schema.Literals([
+      "not-in-trash", "artifact-in-trash", "dispatch-held", "confirmation-mismatch", "too-large",
+    ]),
+  },
+) {}
 
 /** The requested artifact does not exist in the installation. */
 export class ArtifactNotFound extends Schema.TaggedError<ArtifactNotFound>()(
@@ -225,6 +287,18 @@ export class InvalidPagination extends Schema.TaggedError<InvalidPagination>()(
   messageField,
 ) {}
 
+/** A file overview filter is malformed, such as an unknown time or folder identity. */
+export class InvalidFileFilter extends Schema.TaggedError<InvalidFileFilter>()(
+  "InvalidFileFilter",
+  messageField,
+) {}
+
+/** A batch was refused before any item ran: empty, too large, repeated, or unconfirmed. */
+export class InvalidBatch extends Schema.TaggedError<InvalidBatch>()(
+  "InvalidBatch",
+  messageField,
+) {}
+
 /** A manifest contains no files. */
 export class EmptyManifest extends Schema.TaggedError<EmptyManifest>()(
   "EmptyManifest",
@@ -264,7 +338,7 @@ export class IdempotencyConflict extends Schema.TaggedError<IdempotencyConflict>
 /** The artifact's current version changed before the publication committed. */
 export class PublishConflict extends Schema.TaggedError<PublishConflict>()(
   "PublishConflict",
-  messageField,
+  {...messageField, currentVersionId: Schema.optional(Schema.String)},
 ) {}
 
 /** The requested staged upload has already committed. */
@@ -343,6 +417,26 @@ export class SourceUnreadable extends Schema.TaggedError<SourceUnreadable>()(
   messageField,
 ) {}
 
+/**
+ * A linked-folder entry's path no longer canonicalizes to the path the scan
+ * recorded, such as a parent directory swapped for a symlink after the scan.
+ */
+export class SourceMoved extends Schema.TaggedError<SourceMoved>()(
+  "SourceMoved",
+  messageField,
+) {}
+
+/** A folder-link command was refused without writing link or inventory state. */
+export class FolderLinkFailure extends Schema.TaggedError<FolderLinkFailure>()(
+  "FolderLinkFailure",
+  {
+    ...messageField,
+    reason: Schema.Literals([
+      "not-found", "entry-not-found", "overlap", "limit", "batch-too-large", "revision", "in-trash",
+    ]),
+  },
+) {}
+
 /** A deployment-gated capability is not available on this installation. */
 export class CapabilityUnavailable extends Schema.TaggedError<CapabilityUnavailable>()(
   "CapabilityUnavailable",
@@ -371,6 +465,7 @@ export class ArtifactRepositoryFailure extends Schema.TaggedError<ArtifactReposi
       "createStagedUpload",
       "exchangeContentBootstrap",
       "linkedSource",
+      "folderLinks",
       "deleteCommentReply",
       "deleteCommentThread",
       "disconnectRegisteredAgent",
@@ -393,6 +488,18 @@ export class ArtifactRepositoryFailure extends Schema.TaggedError<ArtifactReposi
       "listAgentDispatches",
       "listArtifactActions",
       "listArtifacts",
+      "listFolder",
+      "writeFolder",
+      "writeArtifactPlacement",
+      "moveArtifactToProject",
+      "moveFolderToProject",
+      "locateArtifact",
+      "listTrash",
+      "recoverTrash",
+      "purgeTrash",
+      "listFiles",
+      "fileFacets",
+      "findTrashedThreadHold",
       "listCommentReplies",
       "listCommentThreads",
       "listInsightActivity",
@@ -472,6 +579,9 @@ export class StagingStorageFailure extends Schema.TaggedError<StagingStorageFail
 ) {}
 
 const artifactServerFailureSchema = Schema.Union([
+  FolderFailure,
+  ProjectMoveRefused,
+  TrashFailure,
   AgentDispatchNotFound,
   AgentNotFound,
   ArtifactNotFound,
@@ -496,6 +606,8 @@ const artifactServerFailureSchema = Schema.Union([
   InvalidArtifactTags,
   InvalidIdempotencyKey,
   InvalidPagination,
+  InvalidFileFilter,
+  InvalidBatch,
   EmptyManifest,
   MissingManifestEntry,
   InvalidManifestFile,
@@ -520,6 +632,8 @@ const artifactServerFailureSchema = Schema.Union([
   SourceDrifted,
   SourceMissing,
   SourceUnreadable,
+  SourceMoved,
+  FolderLinkFailure,
   CapabilityUnavailable,
   ArtifactRepositoryFailure,
   IdentityRepositoryFailure,

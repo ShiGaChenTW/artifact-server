@@ -33,6 +33,18 @@ export class SystemIdGenerator implements IdGenerator {
     return randomHex(18);
   }
 
+  folderId(): string {
+    return `fld_${randomUUID()}`;
+  }
+
+  trashGroupId(): string {
+    return `tgr_${randomUUID()}`;
+  }
+
+  folderLinkId(): string {
+    return `flk_${randomUUID()}`;
+  }
+
   /** Create one opaque project identity. */
   projectId(): string {
     return `prj_${randomUUID()}`;

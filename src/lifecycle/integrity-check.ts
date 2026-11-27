@@ -1,3 +1,7 @@
+import {readCompactFileCatalogProblems} from "./compact-file-catalog-integrity.js";
+import {readCompactFolderProblems, readCompactRelocations} from "./compact-folder-integrity.js";
+import {readCompactLinkedFolderProblems} from "./compact-linked-folder-integrity.js";
+import {readCompactTrashProblems} from "./compact-trash-integrity.js";
 import {createHash} from "node:crypto";
 import {DatabaseSync} from "node:sqlite";
 import path from "node:path";
@@ -67,6 +71,9 @@ export type ProjectReferenceRow = typeof projectReferenceRowSchema.Type;
 
 /** Provider-neutral catalog consumed by the shared integrity checker. */
 export interface IntegrityCatalog {
+  readonly placementProblems?: readonly IntegrityProblem[];
+  /** Recorded cross-project moves: the artifact left `projectId` for its current project. */
+  readonly relocations?: readonly {readonly artifactId: string; readonly projectId: string}[];
   readonly artifacts: readonly ArtifactRow[];
   readonly entries: readonly EntryRow[];
   readonly projects: readonly ProjectRow[];
@@ -76,6 +83,8 @@ export interface IntegrityCatalog {
 
 /** One concrete inconsistency found without changing installation state. */
 export interface IntegrityProblem {
+  readonly folderId?: string;
+  readonly folderLinkId?: string;
   readonly artifactId: string;
   readonly code:
     | "blob_digest_mismatch"
@@ -83,11 +92,27 @@ export interface IntegrityProblem {
     | "blob_size_mismatch"
     | "blob_unreadable"
     | "current_pointer_missing"
+    | "file_catalog_index_missing"
+    | "file_catalog_stale"
+    | "folder_capture_orphan"
+    | "folder_cycle"
+    | "folder_depth_exceeded"
+    | "folder_duplicate_name"
+    | "folder_inventory_binding_mismatch"
+    | "folder_inventory_orphan"
+    | "folder_link_target_invalid"
+    | "folder_live_grant_invalid"
+    | "folder_name_key_invalid"
+    | "folder_placement_mismatch"
+    | "folder_scope_mismatch"
     | "manifest_invalid"
     | "orphan_project"
     | "orphan_entry"
     | "orphan_version"
-    | "project_scope_mismatch";
+    | "project_scope_mismatch"
+    | "trash_group_mismatch"
+    | "trash_placement_invalid"
+    | "trash_state_invalid";
   readonly message: string;
   readonly path: string | null;
   readonly versionId: string | null;
@@ -117,6 +142,8 @@ export class IntegrityCheckError extends Schema.TaggedError<IntegrityCheckError>
     ]),
   },
 ) {}
+
+const requestScopedReferenceKinds: ReadonlySet<string> = new Set(["idempotency", "staged_upload"]);
 
 /** Run a complete read-only compact installation integrity scan. */
 export const checkCompactIntegrity = Effect.fn("checkCompactIntegrity")(
@@ -211,6 +238,7 @@ function readCompactCatalog(databasePath: string): IntegrityCatalog {
   });
   try {
     database.enableDefensive(true);
+    database.exec("BEGIN");
     const quickCheck = database.prepare("PRAGMA quick_check").all();
     if (!quickCheck.some((row) => row["quick_check"] === "ok")) {
       throw new Error("SQLite quick check failed.");
@@ -233,6 +261,13 @@ function readCompactCatalog(databasePath: string): IntegrityCatalog {
         FROM manifest_entries
         ORDER BY version_id, path
       `).all()),
+      placementProblems: [
+        ...readCompactFolderProblems(database),
+        ...readCompactTrashProblems(database),
+        ...readCompactLinkedFolderProblems(database),
+        ...readCompactFileCatalogProblems(database),
+      ],
+      relocations: readCompactRelocations(database),
       projects: decodeProjectRows(database.prepare(`
         SELECT id FROM projects ORDER BY id
       `).all()),
@@ -255,6 +290,11 @@ function readCompactCatalog(databasePath: string): IntegrityCatalog {
         SELECT 'content_session', token_digest, project_id,
           artifact_id, version_id
         FROM content_sessions
+        UNION ALL
+        SELECT 'comment_thread', id, project_id, artifact_id, version_id FROM comment_threads
+        UNION ALL
+        SELECT 'comment_reply', reply.id, reply.project_id, thread.artifact_id, thread.version_id
+        FROM comment_replies reply LEFT JOIN comment_threads thread ON thread.id = reply.thread_id
         ORDER BY kind, id
       `).all()),
       versions: decodeVersionRows(database.prepare(`
@@ -352,7 +392,7 @@ export const checkIntegrityCatalog = Effect.fn("checkIntegrityCatalog")(function
   catalog: IntegrityCatalog,
   blobs: BlobStore,
 ): Effect.fn.Return<IntegrityReport> {
-  const problems: IntegrityProblem[] = [];
+  const problems: IntegrityProblem[] = [...(catalog.placementProblems ?? [])];
   const artifacts = new Map(catalog.artifacts.map((artifact) => [artifact.id, artifact]));
   const projects = new Set(catalog.projects.map((project) => project.id));
   const versions = new Map(catalog.versions.map((version) => [version.id, version]));
@@ -388,6 +428,9 @@ export const checkIntegrityCatalog = Effect.fn("checkIntegrityCatalog")(function
       versionId: artifact.currentVersionId,
     });
   }
+  const relocations = new Set((catalog.relocations ?? []).map(
+    ({artifactId, projectId}) => JSON.stringify([artifactId, projectId]),
+  ));
   for (const reference of catalog.projectReferences) {
     const artifact = reference.artifactId === null
       ? undefined
@@ -395,12 +438,20 @@ export const checkIntegrityCatalog = Effect.fn("checkIntegrityCatalog")(function
     const version = reference.versionId === null
       ? undefined
       : versions.get(reference.versionId);
+    // Idempotency and staged-upload records stay in the project that received
+    // the request; after a recorded move out of that project they follow the
+    // artifact's current scope for every other consistency check.
+    const owner = artifacts.get(reference.artifactId ?? version?.artifactId ?? "");
+    const scopeProjectId = requestScopedReferenceKinds.has(reference.kind) && owner !== undefined &&
+      relocations.has(JSON.stringify([owner.id, reference.projectId]))
+      ? owner.projectId
+      : reference.projectId;
     const projectMissing = !projects.has(reference.projectId);
     const artifactMismatch = reference.artifactId !== null &&
-      (artifact === undefined || artifact.projectId !== reference.projectId);
+      (artifact === undefined || artifact.projectId !== scopeProjectId);
     const versionMismatch = reference.versionId !== null &&
       (version === undefined ||
-        version.projectId !== reference.projectId ||
+        version.projectId !== scopeProjectId ||
         (reference.artifactId !== null &&
           version.artifactId !== reference.artifactId));
     if (!projectMissing && !artifactMismatch && !versionMismatch) continue;

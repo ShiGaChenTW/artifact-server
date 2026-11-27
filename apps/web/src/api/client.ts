@@ -10,6 +10,7 @@ const capabilitySchema = z.enum([
   "content-session:issue",
   "artifact:manage:any",
   "artifact:publish:any",
+  "artifact:purge",
   "artifact:read",
   "project:manage",
 ]);
@@ -62,9 +63,21 @@ const gitHistoryCapabilitySchema = z.object({
 const deploymentCapabilitiesSchema = z.object({
   gitHistory: gitHistoryCapabilitySchema.default(disabledGitHistoryCapability),
   linkedArtifacts: z.boolean(),
+  linkedFolders: z.boolean().default(false),
+  folders: z.boolean().default(false),
+  crossProjectMove: z.boolean().default(false),
+  trash: z.boolean().default(false),
+  fileOverview: z.boolean().default(false),
+  batch: z.boolean().default(false),
 }).default({
   gitHistory: disabledGitHistoryCapability,
   linkedArtifacts: false,
+  linkedFolders: false,
+  folders: false,
+  crossProjectMove: false,
+  trash: false,
+  fileOverview: false,
+  batch: false,
 });
 
 const sessionSchema = z.object({
@@ -128,6 +141,11 @@ const projectGitHistoryEstimateSchema = z.object({
 });
 
 const artifactSchema = z.object({
+  folderId: z.string().nullable().optional(),
+  fileKind: z.enum([
+    "site", "html", "markdown", "pdf", "image", "video", "audio", "code", "text", "data", "archive", "other",
+  ]).catch("other").optional(),
+  currentVersionCreatedAt: z.string().optional(),
   accessSetting: accessSettingSchema,
   createdAt: z.string(),
   currentVersionId: z.string(),
@@ -435,6 +453,10 @@ export interface ArtifactAction {
     | "comment_update"
     | "delete"
     | "link"
+    | "move"
+    | "purge"
+    | "recover"
+    | "rename"
     | "publish"
     | "relink"
     | "restore";
@@ -495,6 +517,117 @@ const artifactPageSchema: z.ZodType<ArtifactPage> = z.object({
   nextCursor: z.string().nullable(),
 });
 
+const folderSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  parentFolderId: z.string().nullable(),
+  name: z.string(),
+  revision: z.number().int().positive(),
+});
+export type Folder = z.infer<typeof folderSchema>;
+
+const trashLocationSchema = z.object({
+  projectId: z.string(),
+  folderId: z.string().nullable(),
+  path: z.array(z.object({id: z.string(), name: z.string()})),
+});
+const trashedItemFields = {
+  id: z.string(),
+  projectId: z.string(),
+  name: z.string(),
+  location: trashLocationSchema,
+  trashedAt: z.string(),
+  trashedBy: z.string().nullable(),
+  trashGroupId: z.string().nullable(),
+};
+const trashedItemSchema = z.discriminatedUnion("kind", [
+  z.object({...trashedItemFields, kind: z.literal("artifact"), fileKind: z.string().nullable()}),
+  z.object({...trashedItemFields, kind: z.literal("folder"), artifactCount: z.number().int().nonnegative()}),
+]);
+export type TrashedItem = z.infer<typeof trashedItemSchema>;
+export const fileKinds = [
+  "site", "html", "markdown", "pdf", "image", "video", "audio", "data", "code", "archive", "text", "other",
+] as const;
+export type FileKind = (typeof fileKinds)[number];
+const fileItemSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  projectId: z.string(),
+  projectName: z.string(),
+  folderId: z.string().nullable(),
+  folderPath: z.array(z.object({id: z.string(), name: z.string()})),
+  fileKind: z.enum(fileKinds).catch("other"),
+  currentVersionId: z.string(),
+  currentVersionNumber: z.number().int(),
+  size: z.number().int().nonnegative(),
+  entryMediaType: z.string(),
+  tags: z.array(z.string()),
+  commentCount: z.number().int().nonnegative(),
+  versionCount: z.number().int().nonnegative(),
+  accessSetting: accessSettingSchema,
+  linked: sourceFreshnessSchema.nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type FileItem = z.infer<typeof fileItemSchema>;
+const filePageSchema = z.object({items: z.array(fileItemSchema), nextCursor: z.string().nullable()});
+const countSchema = z.number().int().nonnegative();
+const fileFacetsSchema = z.object({
+  facets: z.object({
+    total: countSchema,
+    kinds: z.array(z.object({kind: z.enum(fileKinds).catch("other"), count: countSchema})),
+    projects: z.array(z.object({projectId: z.string(), count: countSchema})),
+    tags: z.array(z.object({tag: z.string(), count: countSchema})),
+  }),
+});
+export type FileFacets = z.infer<typeof fileFacetsSchema>["facets"];
+
+/** One batch item, guarded as if it were sent alone. */
+export type BatchItem =
+  | {readonly kind: "artifact"; readonly projectId: string; readonly artifactId: string; readonly expectedCurrentVersionId: string}
+  | {readonly kind: "folder"; readonly projectId: string; readonly folderId: string; readonly expectedRevision: number};
+export type BatchOperation = "move" | "trash" | "recover" | "purge" | "tag-add" | "tag-remove";
+const batchResultSchema = z.object({
+  operation: z.string(),
+  results: z.array(z.object({
+    index: z.number().int(),
+    status: z.enum(["ok", "conflict", "not-found", "refused"]),
+    error: z.object({code: z.string(), message: z.string(), currentVersionId: z.string().optional()}).loose().optional(),
+  }).loose()),
+});
+export type BatchResult = z.infer<typeof batchResultSchema>;
+
+const trashPageSchema = z.object({items: z.array(trashedItemSchema), nextCursor: z.string().nullable()});
+const recoverySchema = z.object({
+  placement: z.enum(["original", "root"]),
+  previousAccessSetting: accessSettingSchema.optional(),
+  previouslyPublicArtifactIds: z.array(z.string()).optional(),
+});
+export type Recovery = z.infer<typeof recoverySchema>;
+
+const folderMutationSchema = z.object({folder: folderSchema});
+const artifactLocationSchema = z.object({location: z.object({
+  artifactId: z.string(),
+  projectId: z.string(),
+  folderId: z.string().nullable(),
+})});
+export type ArtifactLocation = z.infer<typeof artifactLocationSchema>["location"];
+const placementMutationSchema = z.object({artifact: z.object({
+  id: z.string(),
+  projectId: z.string(),
+  folderId: z.string().nullable(),
+  name: z.string(),
+  currentVersionId: z.string(),
+})});
+const folderPageSchema: z.ZodType<FolderPage> = z.intersection(artifactPageSchema, z.object({
+  breadcrumbs: z.array(folderSchema),
+  folders: z.array(folderSchema),
+}));
+export interface FolderPage extends ArtifactPage {
+  readonly breadcrumbs: readonly Folder[];
+  readonly folders: readonly Folder[];
+}
+
 const artifactDetailsSchema: z.ZodType<ArtifactDetails> = z.object({
   artifact: artifactSchema,
   current: artifactVersionSchema,
@@ -521,6 +654,65 @@ const linkedPublicationSchema = z.object({
 
 export type LinkedPublication = z.infer<typeof linkedPublicationSchema>;
 
+const folderLinkSchema = z.object({
+  createdAt: z.string(),
+  entryCount: z.number().int(),
+  folderId: z.string(),
+  id: z.string(),
+  ignore: z.array(z.string()),
+  ignoredCount: z.number().int(),
+  inTrash: z.boolean(),
+  lastScanCompletedAt: z.string().nullable(),
+  lastScanStartedAt: z.string().nullable(),
+  overLimitReason: z.enum(["entries", "ignore-file"]).nullable(),
+  path: z.string(),
+  paused: z.boolean(),
+  pendingCount: z.number().int(),
+  projectId: z.string(),
+  revision: z.number().int(),
+  scanActivity: z.enum(["idle", "queued", "scanning"]),
+  skippedCount: z.number().int(),
+  state: z.enum(["active", "paused", "unavailable", "over-limit"]),
+});
+const folderLinkResultSchema = z.object({folderLink: folderLinkSchema});
+const inventoryEntrySchema = z.object({
+  artifactId: z.string().nullable(),
+  freshness: sourceFreshnessSchema.nullable(),
+  id: z.string(),
+  observedAt: z.string(),
+  pending: z.boolean(),
+  relativePath: z.string(),
+  size: z.number().int().nullable(),
+  skipReason: z.string().nullable(),
+  state: z.enum(["untracked", "tracked", "skipped"]),
+});
+const inventoryPageSchema = z.object({entries: z.array(inventoryEntrySchema), nextCursor: z.string().nullable()});
+const captureResultSchema = z.object({
+  artifactId: z.string().nullable(),
+  code: z.string().nullable(),
+  entryId: z.string(),
+  message: z.string().nullable(),
+  relativePath: z.string().nullable(),
+  status: z.enum(["captured", "unchanged", "refused"]),
+  versionId: z.string().nullable(),
+});
+const relinkSuggestionSchema = z.object({
+  artifactId: z.string(),
+  artifactName: z.string(),
+  expectedSha256: z.string(),
+  fromRelativePath: z.string(),
+  toEntryId: z.string(),
+  toRelativePath: z.string(),
+});
+export type FolderLink = z.infer<typeof folderLinkSchema>;
+export type InventoryEntry = z.infer<typeof inventoryEntrySchema>;
+export type CaptureResult = z.infer<typeof captureResultSchema>;
+export type RelinkSuggestion = z.infer<typeof relinkSuggestionSchema>;
+
+function folderLinkUrl(folderLinkId: string, suffix = ""): string {
+  return `/api/v1/folder-links/${encodeURIComponent(folderLinkId)}${suffix}`;
+}
+
 const actionSchema: z.ZodType<ArtifactAction> = z.object({
   action: z.enum([
     "capture",
@@ -534,6 +726,10 @@ const actionSchema: z.ZodType<ArtifactAction> = z.object({
     "comment_update",
     "delete",
     "link",
+    "move",
+    "purge",
+    "recover",
+    "rename",
     "publish",
     "relink",
     "restore",
@@ -944,6 +1140,25 @@ async function requestText(path: string): Promise<string> {
   return await response.text();
 }
 
+/**
+ * Read at most `byteLimit` leading bytes of one download-route entry. The
+ * download route answers `application/octet-stream`, so these bytes are only
+ * ever data to the application; a server that ignores the range is still
+ * clipped to the limit here.
+ */
+async function requestBytes(
+  path: string,
+  byteLimit: number | null,
+): Promise<Uint8Array> {
+  const headers = new Headers();
+  if (byteLimit !== null) headers.set("Range", `bytes=0-${byteLimit - 1}`);
+  const response = await fetch(path, {credentials: "same-origin", headers});
+  notifySessionExpiry(response);
+  if (!response.ok) throw await parseFailure(response);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  return byteLimit === null ? bytes : bytes.subarray(0, byteLimit);
+}
+
 async function requestHead(path: string): Promise<void> {
   const response = await fetch(path, {
     credentials: "same-origin",
@@ -967,6 +1182,10 @@ async function requestNoContent(path: string, init: RequestInit): Promise<void> 
       response.status,
     );
   }
+}
+
+function folderUrl(projectId: string, folderId: string | null): string {
+  return `/api/v1/projects/${encodeURIComponent(projectId)}/folders/${encodeURIComponent(folderId ?? "root")}`;
 }
 
 function projectQuery(projectId: string): string {
@@ -1100,17 +1319,94 @@ export const api = {
     search = "",
     options: {
       readonly comments?: "all" | "with" | "without";
+      readonly folderId?: string | null | undefined;
       readonly sort?: "comments" | "newest";
     } = {},
-  ) => {
+  ): Promise<ArtifactPage | FolderPage> => {
     const query = new URLSearchParams({ limit: "25", projectId });
     query.set("comments", options.comments ?? "all");
     query.set("sort", options.sort ?? "newest");
     if (cursor !== null) query.set("cursor", cursor);
     for (const tag of tags) query.append("tag", tag);
     if (search.trim() !== "") query.set("search", search.trim());
+    if (options.folderId !== undefined) {
+      return request(folderPageSchema, `${folderUrl(projectId, options.folderId)}?${query}`);
+    }
     return request(artifactPageSchema, `/api/v1/artifacts?${query}`);
   },
+  folders: (projectId: string, folderId: string | null, search = "", cursor: string | null = null) => {
+    const query = new URLSearchParams({foldersOnly: "true", search, limit: "50"});
+    if (cursor !== null) query.set("cursor", cursor);
+    return request(folderPageSchema, `${folderUrl(projectId, folderId)}?${query}`);
+  },
+  createFolder: (projectId: string, parentFolderId: string | null, name: string, key: string) => request(
+    folderMutationSchema,
+    `/api/v1/projects/${encodeURIComponent(projectId)}/folders`,
+    {method: "POST", headers: mutationHeaders(key), body: JSON.stringify({name, parentFolderId})},
+  ),
+  updateFolder: (folder: Folder, change: {name: string} | {parentFolderId: string | null}, key: string) => request(
+    folderMutationSchema,
+    folderUrl(folder.projectId, folder.id),
+    {method: "PATCH", headers: mutationHeaders(key), body: JSON.stringify({...change, expectedRevision: folder.revision})},
+  ),
+  files: (query: URLSearchParams) => request(filePageSchema, `/api/v1/files?${query}`),
+  fileFacets: (query: URLSearchParams) =>
+    request(fileFacetsSchema, `/api/v1/files/facets?${query}`).then(({facets}) => facets),
+  batch: (body: {
+    readonly operation: BatchOperation;
+    readonly items: readonly BatchItem[];
+    readonly params: {readonly toFolderId?: string | null; readonly toProjectId?: string; readonly tags?: readonly string[]};
+    readonly idempotencyKey: string;
+  }) => request(batchResultSchema, "/api/v1/batch", {
+    method: "POST", headers: mutationHeaders(body.idempotencyKey), body: JSON.stringify(body),
+  }),
+  trash: (cursor: string | null) => {
+    const query = new URLSearchParams({limit: "50"});
+    if (cursor !== null) query.set("cursor", cursor);
+    return request(trashPageSchema, `/api/v1/trash?${query}`);
+  },
+  recoverTrashed: (item: Pick<TrashedItem, "kind" | "id" | "projectId">, key: string, name?: string) => request(
+    recoverySchema,
+    item.kind === "artifact"
+      ? `/api/v1/artifacts/${encodeURIComponent(item.id)}/recover?${projectQuery(item.projectId)}`
+      : `${folderUrl(item.projectId, item.id)}/recover`,
+    item.kind === "artifact"
+      ? {method: "POST", headers: mutationHeaders(key)}
+      : {method: "POST", headers: mutationHeaders(key), body: JSON.stringify(name === undefined ? {} : {name})},
+  ),
+  purgeTrashed: (item: Pick<TrashedItem, "kind" | "id" | "projectId">, confirm: string, key: string) => request(
+    z.object({}).loose(),
+    item.kind === "artifact"
+      ? `/api/v1/artifacts/${encodeURIComponent(item.id)}/purge?${projectQuery(item.projectId)}`
+      : `${folderUrl(item.projectId, item.id)}/purge`,
+    {method: "POST", headers: mutationHeaders(key), body: JSON.stringify({confirm})},
+  ),
+  deleteFolder: (folder: Folder, key: string) => request(
+    folderMutationSchema,
+    `${folderUrl(folder.projectId, folder.id)}?expectedRevision=${folder.revision}`,
+    {method: "DELETE", headers: mutationHeaders(key)},
+  ),
+  renameArtifact: (artifact: Artifact, name: string, key: string) => request(
+    placementMutationSchema,
+    `/api/v1/artifacts/${encodeURIComponent(artifact.id)}/name?${projectQuery(artifact.projectId)}`,
+    {method: "PATCH", headers: mutationHeaders(key), body: JSON.stringify({name, expectedCurrentVersionId: artifact.currentVersionId})},
+  ),
+  moveArtifact: (artifact: Artifact, toFolderId: string | null, key: string, toProjectId = artifact.projectId) => request(
+    placementMutationSchema,
+    `/api/v1/artifacts/${encodeURIComponent(artifact.id)}/move?${projectQuery(artifact.projectId)}`,
+    {method: "POST", headers: mutationHeaders(key), body: JSON.stringify(
+      {toFolderId, expectedCurrentVersionId: artifact.currentVersionId, toProjectId},
+    )},
+  ),
+  moveFolderToProject: (folder: Folder, toProjectId: string, toParentFolderId: string | null, key: string) => request(
+    folderMutationSchema,
+    `${folderUrl(folder.projectId, folder.id)}/move-to-project`,
+    {method: "POST", headers: mutationHeaders(key), body: JSON.stringify({toProjectId, toParentFolderId, expectedRevision: folder.revision})},
+  ),
+  locateArtifact: (artifactId: string) => request(
+    artifactLocationSchema,
+    `/api/v1/artifacts/${encodeURIComponent(artifactId)}/location`,
+  ),
   artifact: (projectId: string, artifactId: string) => request(
     artifactDetailsSchema,
     `/api/v1/artifacts/${encodeURIComponent(artifactId)}?${projectQuery(projectId)}`,
@@ -1206,6 +1502,7 @@ export const api = {
   ) => request(
     z.object({
       artifact: artifactSchema.extend({ deletedAt: z.string() }),
+      recoverable: z.boolean().default(false),
       replayed: z.boolean(),
       retainedVersionCount: z.number(),
     }),
@@ -1234,6 +1531,68 @@ export const api = {
       headers: mutationHeaders(idempotencyKey),
       method: "POST",
     },
+  ),
+  folderLinks: async (projectId: string) => (await request(
+    z.object({folderLinks: z.array(folderLinkSchema)}),
+    `/api/v1/projects/${encodeURIComponent(projectId)}/folder-links`,
+  )).folderLinks,
+  linkFolder: async (projectId: string, path: string, newFolderName: string | null, key: string) => (await request(
+    folderLinkResultSchema,
+    `/api/v1/projects/${encodeURIComponent(projectId)}/folder-links`,
+    {body: JSON.stringify({folderId: null, ignore: [], newFolderName, path}), headers: mutationHeaders(key), method: "POST"},
+  )).folderLink,
+  updateFolderLink: async (link: FolderLink, change: {readonly paused: boolean} | {readonly ignore: readonly string[]}) => (await request(
+    folderLinkResultSchema,
+    folderLinkUrl(link.id),
+    {body: JSON.stringify({...change, expectedRevision: link.revision}), headers: mutationHeaders(), method: "PATCH"},
+  )).folderLink,
+  unlinkFolder: async (link: FolderLink) => (await request(
+    folderLinkResultSchema,
+    folderLinkUrl(link.id, `?expectedRevision=${link.revision}`),
+    {headers: mutationHeaders(), method: "DELETE"},
+  )).folderLink,
+  scanFolderLink: async (folderLinkId: string) => (await request(
+    folderLinkResultSchema,
+    folderLinkUrl(folderLinkId, "/scan"),
+    {headers: mutationHeaders(), method: "POST"},
+  )).folderLink,
+  folderLinkInventory: (folderLinkId: string, filter: "pending" | "all" | "skipped", cursor: string | null) => {
+    const query = new URLSearchParams({limit: "200"});
+    if (filter === "pending") query.set("pending", "true");
+    if (filter === "skipped") query.set("state", "skipped");
+    if (cursor !== null) query.set("cursor", cursor);
+    return request(inventoryPageSchema, folderLinkUrl(folderLinkId, `/inventory?${query}`));
+  },
+  captureFolderLink: async (folderLinkId: string, entries: readonly string[] | "all", key: string) => (await request(
+    z.object({results: z.array(captureResultSchema)}),
+    folderLinkUrl(folderLinkId, "/capture"),
+    {
+      body: JSON.stringify(entries === "all" ? {all: true} : {entryIds: entries}),
+      headers: mutationHeaders(key),
+      method: "POST",
+    },
+  )).results,
+  relinkSuggestions: async (folderLinkId: string) => (await request(
+    z.object({suggestions: z.array(relinkSuggestionSchema)}),
+    folderLinkUrl(folderLinkId, "/relink-suggestions"),
+  )).suggestions,
+  acceptRelink: (folderLinkId: string, suggestion: RelinkSuggestion, key: string) => request(
+    z.object({sourceBinding: sourceBindingSchema}),
+    folderLinkUrl(folderLinkId, "/relink"),
+    {
+      body: JSON.stringify({
+        artifactId: suggestion.artifactId,
+        entryId: suggestion.toEntryId,
+        expectedSha256: suggestion.expectedSha256,
+      }),
+      headers: mutationHeaders(key),
+      method: "POST",
+    },
+  ),
+  entryLiveSession: (folderLinkId: string, entryId: string) => request(
+    z.object({bootstrapUrl: z.url(), expiresAt: z.string()}),
+    folderLinkUrl(folderLinkId, `/entries/${encodeURIComponent(entryId)}/live-sessions`),
+    {headers: mutationHeaders(), method: "POST"},
   ),
   /**
    * Enter the artifact's live origin: the answer is a one-use bootstrap URL
@@ -1291,6 +1650,16 @@ export const api = {
     versionId,
     path,
   )),
+  versionFileBytes: (
+    projectId: string,
+    artifactId: string,
+    versionId: string,
+    path: string,
+    byteLimit: number | null,
+  ) => requestBytes(
+    versionAssetUrl("file", projectId, artifactId, versionId, path),
+    byteLimit,
+  ),
   versionFileUrl: (
     projectId: string,
     artifactId: string,

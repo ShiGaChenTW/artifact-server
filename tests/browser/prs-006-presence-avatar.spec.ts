@@ -12,7 +12,7 @@ import {
   removeTestInstallation,
   startTestServer,
 } from "../support/runtime-harness.js";
-import {browserStorage, localLogin, type BrowserFixture} from "./browser-fixture.js";
+import {browserStorage, localLogin, type BrowserFixture, englishContext} from "./browser-fixture.js";
 import {createThreadOverApi} from "./comment-api.js";
 
 const fixtureHtml =
@@ -32,7 +32,7 @@ async function startPresenceFixture(browser: Browser): Promise<PresenceFixture> 
   const installation = await createTestInstallation();
   const clock = new MutableClock();
   const server = await startTestServer(installation, {clock});
-  const context = await browser.newContext();
+  const context = await englishContext(browser);
   const page = await context.newPage();
   return {clock, context, installation, page, server};
 }
@@ -223,8 +223,7 @@ test.describe("PRS-006 presence avatar", () => {
         versionId: published.version.id,
       });
       await page.getByRole("button", {name: "Reload"}).click();
-      await expect(page.getByText("pres disconnected — pick another"))
-        .toBeVisible();
+      await expect(page.getByRole("link", {name: "Connect an agent"})).toBeVisible();
 
       // A second agent connects; the disconnected one keeps its hollow ring
       // and its row refuses selection, stating when it was last seen.
@@ -232,6 +231,7 @@ test.describe("PRS-006 presence avatar", () => {
         connectionKey: "prs-006-backup-connection-key",
         name: "backup",
       });
+      await expect(page.getByText("pres disconnected — pick another")).toBeVisible();
       await page.getByRole("button", {
         name: "Choose agent or send with a note",
       }).first().click();
@@ -268,8 +268,10 @@ test.describe("PRS-006 presence avatar", () => {
       expect(await browserStorage(page)).toEqual({
         indexedDatabaseNames: [],
         localStorageKeys: [
-          expect.stringMatching(/^dispatch-default:/u),
+          "artifact-review-locale",
           "artifact-review-theme",
+          "artifact-review-visits",
+          expect.stringMatching(/^dispatch-default:/u),
         ],
         sessionStorageKeys: ["artifact-review-return-url"],
       });

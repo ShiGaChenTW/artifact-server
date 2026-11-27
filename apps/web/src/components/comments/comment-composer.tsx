@@ -3,6 +3,9 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { componentsText } from "@/i18n/messages/components";
+
+const text = componentsText.comments;
 
 /**
  * Bounded comment body editor.
@@ -40,20 +43,25 @@ export function CommentComposer({
 }) {
   const [body, setBody] = useState(initialBody);
   const [pending, setPending] = useState(false);
+  const submitting = useRef(false);
   const attemptKey = useRef<string | null>(null);
   const trimmed = body.trim();
   const tooLong = trimmed.length > maximumCharacters;
 
   const submit = async () => {
-    if (trimmed === "" || tooLong) return;
-    attemptKey.current ??= crypto.randomUUID();
+    if (trimmed === "" || tooLong || submitting.current) return;
+    const key = attemptKey.current ??= crypto.randomUUID();
+    submitting.current = true;
     setPending(true);
-    const accepted = await onSubmit(trimmed, attemptKey.current);
-    setPending(false);
-    if (!accepted) return;
-    attemptKey.current = null;
-    setBody("");
-    onBodyChange?.("");
+    try {
+      if (!await onSubmit(trimmed, key)) return;
+      attemptKey.current = null;
+      setBody("");
+      onBodyChange?.("");
+    } finally {
+      submitting.current = false;
+      setPending(false);
+    }
   };
 
   const discardDraft = () => {
@@ -70,7 +78,7 @@ export function CommentComposer({
         {draftRestored && trimmed !== "" ? (
           <span className="flex items-baseline gap-2">
             <span className="text-xs text-muted-foreground" data-draft-marker>
-              Draft
+              {text.draft}
             </span>
             {onDiscardDraft === undefined ? null : (
               <button
@@ -78,7 +86,7 @@ export function CommentComposer({
                 onClick={discardDraft}
                 type="button"
               >
-                Discard
+                {text.discard}
               </button>
             )}
           </span>
@@ -94,15 +102,22 @@ export function CommentComposer({
           setBody(event.currentTarget.value);
           onBodyChange?.(event.currentTarget.value);
         }}
-        placeholder="Describe what should change and why."
+        onKeyDown={(event) => {
+          if (
+            event.key === "Enter" && (event.metaKey || event.ctrlKey)
+            && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229
+          ) {
+            event.preventDefault();
+            void submit();
+          }
+        }}
+        placeholder={text.placeholder}
         value={body}
       />
       {tooLong
         ? (
           <p className="text-xs text-destructive" id={`${inputId}-limit`}>
-            {`A comment holds at most ${maximumCharacters} characters. Remove ${
-              trimmed.length - maximumCharacters
-            }.`}
+            {text.tooLong(maximumCharacters, trimmed.length - maximumCharacters)}
           </p>
         )
         : null}
@@ -112,8 +127,9 @@ export function CommentComposer({
           onClick={() => void submit()}
           size="xs"
           type="button"
+          variant="outline"
         >
-          {pending ? "Saving…" : submitLabel}
+          {pending ? text.saving : submitLabel}
         </Button>
         {onCancel === null || cancelLabel === null
           ? null

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { errorMessage } from "@/lib/presentation";
+import { settingsText } from "@/i18n/messages/settings";
 
 /** Primary heading and actions for a management screen. */
 export function PageHeader({
@@ -19,18 +20,17 @@ export function PageHeader({
   readonly title: string;
 }) {
   return (
-    <header className="flex flex-col gap-5 border-b pb-6 sm:flex-row sm:items-end sm:justify-between">
+    <header className="flex flex-col gap-4 border-b pb-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
-        {eyebrow === undefined ? null : (
-          <p className="mb-2 font-mono text-xs font-semibold tracking-widest text-primary uppercase">
-            {eyebrow}
-          </p>
-        )}
-        <h1 className="font-heading text-3xl leading-tight font-semibold tracking-tight text-balance sm:text-4xl">
+        <h1 className="font-heading text-xl leading-tight font-semibold text-balance">
           {title}
         </h1>
+        {/* The group a screen belongs to follows its title, never above it. */}
+        {eyebrow === undefined ? null : (
+          <p className="mt-1 text-sm text-muted-foreground">{eyebrow}</p>
+        )}
         {description === undefined ? null : (
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+          <p className="mt-1.5 max-w-3xl text-sm text-muted-foreground">
             {description}
           </p>
         )}
@@ -53,9 +53,9 @@ export function StatePanel({
   readonly title: string;
 }) {
   return (
-    <section className="flex min-h-56 flex-col items-start justify-center border p-6 sm:p-8">
-      <h2 className="font-heading text-lg font-semibold">{title}</h2>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+    <section className="flex min-h-44 flex-col items-start justify-center rounded-[var(--radius-card)] border bg-card p-6">
+      <h2 className="font-heading text-base font-semibold">{title}</h2>
+      <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">
         {description}
       </p>
       {action === undefined ? null : <div className="mt-5">{action}</div>}
@@ -77,17 +77,17 @@ export function ErrorPanel({
     || error.code === "PUBLISH_CONFLICT"
   );
   const title = forbidden
-    ? "Permission required"
+    ? settingsText.product.permissionRequired
     : conflict
-      ? "Artifact changed"
-      : "Request failed";
+      ? settingsText.product.artifactChanged
+      : settingsText.product.requestFailed;
   return (
     <StatePanel
       action={onRetry === undefined
         ? undefined
         : (
           <Button onClick={onRetry} type="button" variant="outline">
-            {conflict ? "Reload artifact" : "Try again"}
+            {conflict ? settingsText.product.reloadArtifact : settingsText.product.tryAgain}
           </Button>
         )}
       description={errorMessage(error)}
@@ -107,8 +107,10 @@ export function StatusBadge({
   return (
     <Badge
       className={cn(
-        tone === "primary" && "text-primary",
-        tone === "danger" && "text-destructive",
+        "border px-1.5 py-0.5",
+        tone === "neutral" && "border-border bg-[var(--color-paper-3)] text-[var(--color-ink-2)]",
+        tone === "primary" && "border-[color-mix(in_oklab,var(--color-cool)_40%,transparent)] bg-[var(--color-cool-soft)] text-[var(--color-cool)]",
+        tone === "danger" && "border-[color-mix(in_oklab,var(--color-bad)_40%,transparent)] bg-[var(--color-bad-soft)] text-[var(--color-bad)]",
       )}
       variant={tone === "danger" ? "destructive" : "secondary"}
     >
@@ -126,8 +128,8 @@ export function MetadataRow({
   readonly label: string;
 }) {
   return (
-    <div className="grid gap-1 border-b py-3 last:border-b-0 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4">
-      <dt className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">
+    <div className="grid gap-1 border-b py-2.5 last:border-b-0 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4">
+      <dt className="text-sm text-muted-foreground">
         {label}
       </dt>
       <dd className="min-w-0 break-words text-sm">{children}</dd>

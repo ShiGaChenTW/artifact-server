@@ -1,3 +1,26 @@
+import {ArtifactPlacementService, FolderService} from "../application/folders.js";
+import type {ArtifactLocation} from "../core/folders.js";
+import {TrashService} from "../application/trash.js";
+import {FileCatalogService} from "../application/file-catalog.js";
+import {BatchService} from "../application/batch.js";
+import {batchOperations, maximumBatchItems} from "../core/batch.js";
+import {fileKinds, maximumFilePageSize} from "../core/file-catalog.js";
+import {
+  batchFields, batchResponse, fileListCommand, fileListFields, filePageResponse,
+} from "../http/file-catalog-protocol.js";
+import {decodeTrashCursor, trashPageResponse} from "../http/trash-protocol.js";
+import {maximumTrashPageSize} from "../core/trash.js";
+import {LinkedFolderService, type UpdateFolderLinkCommand} from "../application/linked-folders.js";
+import {
+  captureResultOutputSchema, folderLinkIdSchema, folderLinkOutputSchema, folderLinkProjection,
+  folderLinkRevisionSchema, inventoryEntryOutputSchema, inventoryEntryProjection, linkFolderSchema,
+  updateFolderLinkSchema,
+} from "../http/folder-link-protocol.js";
+import {
+  artifactMoveSchema, artifactRenameSchema, createFolderSchema, decodeFolderCursor,
+  folderContentsResponse, folderCreateKey, folderIdSchema, folderLocationSchema,
+  folderProjectMoveSchema, folderRevisionSchema, updateFolderSchema,
+} from "../http/folder-protocol.js";
 import {createHash} from "node:crypto";
 
 import {
@@ -79,6 +102,8 @@ import {
 } from "../core/publishing-limits.js";
 import {
   AgentNotFound,
+  ArtifactNotFound,
+  CapabilityUnavailable,
   InvalidComment,
   InvalidDispatch,
   InvalidPagination,
@@ -127,6 +152,9 @@ const declaredFileSchema = z.object({
   size: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
 }).strict();
 const artifactRecordSchema = z.object({
+  folderId: z.string().nullable().optional(),
+  fileKind: z.string().optional(),
+  currentVersionCreatedAt: z.string().optional(),
   accessSetting: accessSettingSchema,
   createdAt: z.string(),
   currentVersionId: z.string(),
@@ -136,6 +164,25 @@ const artifactRecordSchema = z.object({
   projectId: z.string(),
   tags: z.array(z.string()),
 }).strict();
+const folderRecordSchema = z.object({
+  id: folderIdSchema,
+  installationId: z.string(),
+  projectId: z.string(),
+  parentFolderId: folderIdSchema.nullable(),
+  name: z.string(),
+  nameKey: z.string(),
+  revision: folderRevisionSchema,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+const folderWriteResult = z.object({folder: folderRecordSchema});
+const placementWriteResult = z.object({artifact: artifactRecordSchema.pick({
+  id: true,
+  name: true,
+  projectId: true,
+  currentVersionId: true,
+}).extend({folderId: folderIdSchema.nullable()})});
+
 const versionRecordSchema = z.object({
   artifactId: z.string(),
   contentToken: z.string(),
@@ -381,6 +428,10 @@ export interface ArtifactMcpServerDependencies {
   readonly gitHistory: GitHistoryCapability;
   /** Advertises the local linked-artifact capability in discovery. */
   readonly linkedArtifacts?: boolean;
+  /** Advertises and enables the local linked-folder tools. */
+  readonly linkedFolders?: boolean;
+  readonly folders?: boolean;
+  readonly trash?: boolean;
   readonly mode: "local" | "remote";
   readonly requestId: string;
 }
@@ -605,6 +656,16 @@ export function createArtifactMcpServer(
           workflow: z.array(z.string()),
         }),
         linkedArtifacts: z.object({available: z.boolean()}),
+        linkedFolders: z.object({available: z.boolean()}),
+        folders: z.object({available: z.boolean()}),
+        crossProjectMove: z.object({available: z.boolean()}),
+        trash: z.object({available: z.boolean(), purge: z.literal("human-only")}),
+        fileOverview: z.object({available: z.boolean(), maximumPageSize: z.number().int()}),
+        batch: z.object({
+          available: z.boolean(),
+          maximumItems: z.number().int(),
+          operations: z.array(z.enum(batchOperations)),
+        }),
         projects: z.object({
           omittedProjectRule: z.string(),
           scope: z.literal("project"),
@@ -614,11 +675,16 @@ export function createArtifactMcpServer(
       annotations: readOnlyAnnotations,
     },
     () => successResult(
-      capabilities(
-        dependencies.mode,
-        dependencies.linkedArtifacts === true,
-        dependencies.gitHistory,
-      ),
+      {
+        ...capabilities(
+          dependencies.mode,
+          dependencies.linkedArtifacts === true,
+          dependencies.gitHistory,
+          dependencies.folders === true,
+          dependencies.trash === true,
+        ),
+        linkedFolders: {available: linkedFoldersAvailable},
+      },
       "Artifact Server publishes actual files through an upload plan. It does not accept inline HTML, CSS, JavaScript, or base64 content."),
   );
 
@@ -849,6 +915,282 @@ export function createArtifactMcpServer(
     ),
   );
 
+  const folderWriteFields = {projectId: optionalProjectIdSchema, idempotencyKey: idempotencyKeySchema};
+  const artifactPlacementFields = {...folderWriteFields, artifactId: artifactIdSchema};
+
+  registerNudgedTool("folder_list", {
+    title: "List folder contents",
+    description: "List a project's root or one folder with its breadcrumbs and a continuation cursor.",
+    inputSchema: z.object({
+      projectId: optionalProjectIdSchema,
+      folderId: folderLocationSchema.default(null),
+      foldersOnly: z.boolean().default(false),
+      cursor: z.string().max(8_192).nullable().default(null),
+      limit: z.number().int().min(1).max(maximumListedArtifacts).default(50),
+      search: z.string().max(200).nullable().default(null),
+      comments: z.enum(["all", "with", "without"]).default("all"),
+      sort: z.enum(["newest", "comments"]).default("newest"),
+      tags: z.array(z.string().max(200)).max(20).default([]),
+    }).strict(),
+    outputSchema: z.object({
+      breadcrumbs: z.array(folderRecordSchema),
+      folders: z.array(folderRecordSchema),
+      artifacts: z.array(z.object({
+        artifact: artifactRecordSchema,
+        commentCount: z.number().int().nonnegative(),
+        versionCount: z.number().int().positive(),
+        links: z.object({artifact: z.url(), management: z.url()}),
+      })),
+      nextCursor: z.string().nullable(),
+    }),
+    annotations: readOnlyAnnotations,
+  }, async ({cursor, ...input}) => toolResult(async () => {
+    const page = await runMcpApplicationEffect(dependencies, FolderService.use(
+      (service) => service.list({...input, principal: identity.principal, cursor: decodeFolderCursor(cursor)}),
+    ));
+    return folderContentsResponse(applicationUrl, page);
+  }));
+
+  registerNudgedTool("folder_create", {
+    title: "Create a folder",
+    description: "Create a folder by name. Provide a client-generated folder ID or an idempotency key for retries.",
+    inputSchema: createFolderSchema.extend({
+      ...folderWriteFields, idempotencyKey: idempotencyKeySchema.optional(),
+    }).strict(),
+    outputSchema: folderWriteResult,
+    annotations: idempotentWriteAnnotations,
+  }, async ({projectId, idempotencyKey, ...input}) => toolResult(async () => ({
+    folder: await runMcpApplicationEffect(dependencies, FolderService.use(
+      (service) => service.write({
+        projectId,
+        principal: identity.principal,
+        idempotencyKey: folderCreateKey(input.id, idempotencyKey),
+      }, {...input, kind: "create"}),
+    )),
+  })));
+
+  registerNudgedTool("folder_update", {
+    title: "Rename or move a folder",
+    description: "Change a folder label or parent within its project using its current revision.",
+    inputSchema: updateFolderSchema.extend({...folderWriteFields, folderId: folderIdSchema}).strict(),
+    outputSchema: folderWriteResult,
+    annotations: idempotentWriteAnnotations,
+  }, async ({projectId, idempotencyKey, folderId, ...input}) => toolResult(async () => ({
+    folder: await runMcpApplicationEffect(dependencies, FolderService.use(
+      (service) => service.write({projectId, idempotencyKey, principal: identity.principal}, {
+        ...input, kind: "update", id: folderId,
+      }),
+    )),
+  })));
+
+  registerNudgedTool("folder_trash", {
+    title: "Move a folder to the trash",
+    description: "Move a folder and everything still in it to the trash as one group, using its current revision. The group stays recoverable with folder_recover until a person purges it.",
+    inputSchema: z.object({
+      ...folderWriteFields, folderId: folderIdSchema, expectedRevision: folderRevisionSchema,
+    }).strict(),
+    outputSchema: folderWriteResult,
+    annotations: destructiveWriteAnnotations,
+  }, async ({projectId, idempotencyKey, folderId, expectedRevision}) => toolResult(async () => ({
+    folder: await runMcpApplicationEffect(dependencies, FolderService.use(
+      (service) => service.write({projectId, idempotencyKey, principal: identity.principal}, {
+        kind: "delete", id: folderId, expectedRevision,
+      }),
+    )),
+  })));
+
+  const trashItemSchema = z.object({
+    kind: z.enum(["artifact", "folder"]),
+    id: z.string(),
+    projectId: z.string(),
+    name: z.string(),
+    location: z.object({
+      projectId: z.string(),
+      folderId: z.string().nullable(),
+      path: z.array(z.object({id: z.string(), name: z.string()})),
+    }),
+    trashedAt: z.string(),
+    trashedBy: z.string().nullable(),
+    trashGroupId: z.string().nullable(),
+    accessSetting: accessSettingSchema.optional(),
+    currentVersionId: z.string().optional(),
+    fileKind: z.string().nullable().optional(),
+    revision: z.number().int().optional(),
+    artifactCount: z.number().int().optional(),
+  });
+  const recoveryPlacementSchema = z.enum(["original", "root"]);
+
+  registerNudgedTool("trash_list", {
+    title: "List the trash",
+    description: "List trashed artifacts and folder groups across readable projects, newest first, with their original location. Nothing in the trash is served until it is recovered.",
+    inputSchema: z.object({
+      projectIds: z.array(z.string().min(1).max(200)).max(100).default([]),
+      cursor: z.string().max(1_024).nullable().default(null),
+      limit: z.number().int().min(1).max(maximumTrashPageSize).default(50),
+    }).strict(),
+    outputSchema: z.object({items: z.array(trashItemSchema), nextCursor: z.string().nullable()}),
+    annotations: readOnlyAnnotations,
+  }, async ({cursor, ...input}) => toolResult(async () => trashPageResponse(
+    await runMcpApplicationEffect(dependencies, TrashService.use(
+      (service) => service.list({...input, principal: identity.principal, cursor: decodeTrashCursor(cursor)}),
+    )),
+  )));
+
+  registerNudgedTool("artifact_recover", {
+    title: "Recover an artifact from the trash",
+    description: "Return a trashed artifact with the same ID, versions, comments, and tags, in its original folder or the project root. A formerly public artifact comes back account-required; re-share it explicitly.",
+    inputSchema: z.object({...folderWriteFields, artifactId: artifactIdSchema}).strict(),
+    outputSchema: z.object({
+      artifact: artifactRecordSchema,
+      placement: recoveryPlacementSchema,
+      previousAccessSetting: accessSettingSchema,
+      replayed: z.boolean(),
+    }),
+    annotations: idempotentWriteAnnotations,
+  }, async ({artifactId, ...input}) => toolResult(async () => runMcpApplicationEffect(dependencies, TrashService.use(
+    (service) => service.recover({...input, principal: identity.principal}, {kind: "artifact", artifactId}),
+  ))));
+
+  registerNudgedTool("folder_recover", {
+    title: "Recover a folder from the trash",
+    description: "Return a trashed folder and everything trashed with it. Pass a new name when a sibling folder now uses the old one.",
+    inputSchema: z.object({
+      ...folderWriteFields, folderId: folderIdSchema, name: z.string().max(2_000).optional(),
+    }).strict(),
+    outputSchema: z.object({
+      folder: folderRecordSchema,
+      placement: recoveryPlacementSchema,
+      recoveredArtifactCount: z.number().int().nonnegative(),
+      previouslyPublicArtifactIds: z.array(z.string()),
+    }),
+    annotations: idempotentWriteAnnotations,
+  }, async ({folderId, name, ...input}) => toolResult(async () => runMcpApplicationEffect(dependencies, TrashService.use(
+    (service) => service.recover({...input, principal: identity.principal}, {kind: "folder", folderId, name}),
+  ))));
+
+  registerNudgedTool("artifact_rename", {
+    title: "Rename an artifact",
+    description: "Change an artifact label without creating a version.",
+    inputSchema: artifactRenameSchema.extend(artifactPlacementFields).strict(),
+    outputSchema: placementWriteResult,
+    annotations: idempotentWriteAnnotations,
+  }, async ({name, ...input}) => toolResult(async () => ({
+    artifact: await runMcpApplicationEffect(dependencies, ArtifactPlacementService.use(
+      (service) => service.write({...input, principal: identity.principal}, {kind: "rename", name}),
+    )),
+  })));
+
+  registerNudgedTool("artifact_move", {
+    title: "Move an artifact",
+    description: "Place an artifact in a folder or set toFolderId to null for the project root. " +
+      "Set toProjectId to move it into another active project with the same IDs, versions, comments, and links; " +
+      "the move is refused while an agent dispatch holds its comments or Git history is enabled.",
+    inputSchema: artifactMoveSchema.extend(artifactPlacementFields).strict(),
+    outputSchema: placementWriteResult,
+    annotations: idempotentWriteAnnotations,
+  }, async ({toFolderId, toProjectId, ...input}) => toolResult(async () => ({
+    artifact: await runMcpApplicationEffect(dependencies, ArtifactPlacementService.use(
+      (service) => toProjectId === undefined
+        ? service.write({...input, principal: identity.principal}, {kind: "move", toFolderId})
+        : service.moveAcrossProjects({...input, principal: identity.principal, toProjectId}, toFolderId),
+    )),
+  })));
+
+  registerNudgedTool("folder_move_to_project", {
+    title: "Move a folder to another project",
+    description: "Move a folder, its subfolders, and up to 1,000 artifacts into another active project " +
+      "using the folder's current revision. IDs, versions, comments, and links stay the same.",
+    inputSchema: folderProjectMoveSchema.extend({...folderWriteFields, folderId: folderIdSchema}).strict(),
+    outputSchema: folderWriteResult,
+    annotations: idempotentWriteAnnotations,
+  }, async ({projectId, idempotencyKey, ...input}) => toolResult(async () => ({
+    folder: await runMcpApplicationEffect(dependencies, FolderService.use(
+      (service) => service.moveToProject({...input, projectId, idempotencyKey, principal: identity.principal}),
+    )),
+  })));
+
+  const fileItemSchema = z.object({
+    id: z.string(),
+    name: z.string(),
+    projectId: z.string(),
+    projectName: z.string(),
+    folderId: z.string().nullable(),
+    folderPath: z.array(z.object({id: z.string(), name: z.string()})),
+    fileKind: z.enum(fileKinds),
+    currentVersionId: z.string(),
+    currentVersionNumber: z.number().int(),
+    size: z.number().int(),
+    entryMediaType: z.string(),
+    tags: z.array(z.string()),
+    commentCount: z.number().int(),
+    versionCount: z.number().int(),
+    accessSetting: accessSettingSchema,
+    linked: z.enum(["in-sync", "modified", "missing", "unreadable"]).nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  });
+  const countSchema = z.number().int().nonnegative();
+
+  registerNudgedTool("file_search", {
+    title: "Search files across projects",
+    description: "List non-trashed artifacts across readable projects, newest change first by default, " +
+      "filtered by project, folder subtree, file kind, tag, linked state, created or updated time, and name. " +
+      "Values of one filter combine with OR; different filters combine with AND. Facet counts describe the same filters.",
+    inputSchema: z.object({...fileListFields, includeFacets: z.boolean().default(true)}).strict(),
+    outputSchema: z.object({
+      items: z.array(fileItemSchema),
+      nextCursor: z.string().nullable(),
+      facets: z.object({
+        total: countSchema,
+        kinds: z.array(z.object({kind: z.enum(fileKinds), count: countSchema})),
+        projects: z.array(z.object({projectId: z.string(), count: countSchema})),
+        tags: z.array(z.object({tag: z.string(), count: countSchema})),
+      }).nullable(),
+    }),
+    annotations: readOnlyAnnotations,
+  }, async ({includeFacets, ...input}) => toolResult(async () => {
+    const command = fileListCommand(identity.principal, input);
+    const page = filePageResponse(await runMcpApplicationEffect(dependencies, FileCatalogService.use(
+      (service) => service.list(command),
+    )));
+    const facets = includeFacets
+      ? await runMcpApplicationEffect(dependencies, FileCatalogService.use((service) => service.facets(command)))
+      : null;
+    return {...page, facets};
+  }));
+
+  registerNudgedTool("batch_apply", {
+    title: "Apply one operation to many items",
+    description: `Apply ${batchOperations.join(", ")} to 1..${maximumBatchItems} distinct artifacts or folders. ` +
+      "Each item runs alone with its own guard (expectedCurrentVersionId or expectedRevision) and reports ok, conflict, not-found, or refused in request order; " +
+      "one failure never undoes the others. Replaying the same idempotencyKey returns the same results. " +
+      "Purge stays human-only and needs confirm set to \"purge <n> items\".",
+    inputSchema: z.object(batchFields).strict(),
+    outputSchema: z.object({
+      operation: z.enum(batchOperations),
+      results: z.array(z.object({
+        index: z.number().int(),
+        item: z.object({kind: z.enum(["artifact", "folder"]), projectId: z.string()}).loose(),
+        status: z.enum(["ok", "conflict", "not-found", "refused"]),
+        result: z.object({}).loose().optional(),
+        error: z.object({code: z.string(), message: z.string()}).loose().optional(),
+      })),
+    }),
+    annotations: destructiveWriteAnnotations,
+  }, async (input) => toolResult(async () => {
+    if (dependencies.folders !== true) {
+      throw new CapabilityUnavailable({message: "The file overview and batch operations are unavailable on this deployment."});
+    }
+    return batchResponse(await runMcpApplicationEffect(dependencies, BatchService.use((service) => service.run({
+      principal: identity.principal,
+      operation: input.operation,
+      items: input.items,
+      parameters: input.params,
+      idempotencyKey: input.idempotencyKey,
+      confirm: input.confirm ?? null,
+    }))));
+  }));
+
   registerNudgedTool(
     "artifact_list",
     {
@@ -908,6 +1250,15 @@ export function createArtifactMcpServer(
     }),
   );
 
+  /** Where a not-found artifact moved, for callers with installation-wide read. */
+  const movedArtifactLocation = async (artifactId: string, projectId: string | null) => {
+    if (dependencies.folders !== true) return null;
+    const location = await runMcpApplicationEffect(dependencies, ArtifactPlacementService.use(
+      (service) => service.locate({artifactId, principal: identity.principal}),
+    )).catch(() => null);
+    return location === null || location.projectId === projectId ? null : location;
+  };
+
   registerNudgedTool(
     "artifact_get",
     {
@@ -955,7 +1306,7 @@ export function createArtifactMcpServer(
           artifact: artifactBrowserUrl(applicationUrl, details.artifact.id),
         },
       };
-    }),
+    }, undefined, (cause) => cause instanceof ArtifactNotFound ? movedArtifactLocation(artifactId, projectId) : null),
   );
 
   registerNudgedTool(
@@ -1398,7 +1749,7 @@ export function createArtifactMcpServer(
     {
       title: "Delete an artifact",
       description:
-        "Delete one artifact from active listings after an optimistic current-version check. This is destructive; retained immutable version records are reported.",
+        "Delete one artifact from active listings after an optimistic current-version check. Where artifact_capabilities reports trash available, the artifact moves to the trash and recoverable is true; otherwise the deletion is one-way. Retained immutable version records are reported.",
       inputSchema: z.object({
         artifactId: artifactIdSchema,
         expectedCurrentVersionId: expectedVersionSchema,
@@ -1409,6 +1760,7 @@ export function createArtifactMcpServer(
         artifact: artifactRecordSchema.extend({deletedAt: z.string()}).strict(),
         replayed: z.boolean(),
         retainedVersionCount: z.number().int().nonnegative(),
+        recoverable: z.boolean(),
       }).strict(),
       annotations: destructiveWriteAnnotations,
     },
@@ -1419,7 +1771,7 @@ export function createArtifactMcpServer(
           management.deleteArtifact({...input, principal: identity.principal})
         ),
       );
-      return {...deletion};
+      return deletion;
     }),
   );
 
@@ -1547,6 +1899,118 @@ export function createArtifactMcpServer(
         ),
       })),
   );
+
+  const linkedFoldersAvailable = dependencies.linkedFolders === true && dependencies.mode === "local";
+  const runLinkedFolders = <A, E>(effect: Effect.Effect<A, E, ApplicationServices>) => {
+    if (!linkedFoldersAvailable) {
+      return Promise.reject(new CapabilityUnavailable({message: "Linked folders are not available on this deployment."}));
+    }
+    return runMcpApplicationEffect(dependencies, effect);
+  };
+  const folderLinkResult = z.object({folderLink: folderLinkOutputSchema}).strict();
+  const folderLinkTarget = {folderLinkId: folderLinkIdSchema, projectId: optionalProjectIdSchema};
+
+  registerNudgedTool("folder_link", {
+    title: "Link a directory on this machine to a folder",
+    description:
+      "Link one directory on this server's machine to an Artifact Server folder. The server indexes the directory's files into an inventory but creates no artifact or version until folder_link_capture. Local installations with linked files only; pass an absolute path, never file bytes.",
+    inputSchema: linkFolderSchema.extend({
+      idempotencyKey: idempotencyKeySchema.nullable().default(null),
+      projectId: optionalProjectIdSchema,
+    }).strict(),
+    outputSchema: folderLinkResult,
+    annotations: idempotentWriteAnnotations,
+  }, async ({idempotencyKey, projectId, ...input}) => toolResult(async () => ({
+    folderLink: folderLinkProjection(await runLinkedFolders(LinkedFolderService.use((service) => service.linkFolder({
+      ...input,
+      idempotencyKey: idempotencyKey ?? derivedIdempotencyKey(["folder-link", projectId ?? "", input.path]),
+      principal: identity.principal,
+      projectId,
+    })))),
+  })));
+
+  registerNudgedTool("folder_link_update", {
+    title: "Pause, resume, or change a folder link's ignore rules",
+    description: "Change one folder link using its current revision. Pausing stops watching and scheduled scans and keeps the inventory.",
+    inputSchema: updateFolderLinkSchema.extend(folderLinkTarget).strict(),
+    outputSchema: folderLinkResult,
+    annotations: idempotentWriteAnnotations,
+  }, async ({folderLinkId, projectId, expectedRevision, ignore, paused}) => toolResult(async () => {
+    let command: UpdateFolderLinkCommand = {expectedRevision, folderLinkId, principal: identity.principal, projectId};
+    if (ignore !== undefined) command = {...command, ignore};
+    if (paused !== undefined) command = {...command, paused};
+    const update = command;
+    return {
+      folderLink: folderLinkProjection(await runLinkedFolders(LinkedFolderService.use((service) =>
+        service.updateFolderLink(update)
+      ))),
+    };
+  }));
+
+  registerNudgedTool("folder_unlink", {
+    title: "Unlink a folder from its directory",
+    description: "Remove one folder link and its inventory. Captured artifacts stay linked individually, and nothing on disk changes.",
+    inputSchema: z.object({...folderLinkTarget, expectedRevision: folderLinkRevisionSchema}).strict(),
+    outputSchema: folderLinkResult,
+    annotations: destructiveWriteAnnotations,
+  }, async ({folderLinkId, projectId, expectedRevision}) => toolResult(async () => ({
+    folderLink: folderLinkProjection(await runLinkedFolders(LinkedFolderService.use((service) =>
+      service.unlinkFolder({expectedRevision, folderLinkId, principal: identity.principal, projectId})
+    ))),
+  })));
+
+  registerNudgedTool("folder_link_scan", {
+    title: "Rescan a linked folder now",
+    description: "Run one reconciliation scan of a linked directory. A scan updates only the inventory and binding freshness.",
+    inputSchema: z.object(folderLinkTarget).strict(),
+    outputSchema: folderLinkResult,
+    annotations: idempotentWriteAnnotations,
+  }, async ({folderLinkId, projectId}) => toolResult(async () => ({
+    folderLink: folderLinkProjection(await runLinkedFolders(LinkedFolderService.use((service) =>
+      service.scanNow({folderLinkId, principal: identity.principal, projectId})
+    ))),
+  })));
+
+  registerNudgedTool("folder_link_inventory", {
+    title: "List a linked folder's inventory",
+    description: "List untracked, tracked, and skipped files observed in a linked directory, with pending entries marked.",
+    inputSchema: z.object({
+      ...folderLinkTarget,
+      cursor: z.string().max(8_192).nullable().default(null),
+      limit: z.number().int().min(1).max(500).default(100),
+      pendingOnly: z.boolean().default(false),
+      state: z.enum(["untracked", "tracked", "skipped"]).nullable().default(null),
+    }).strict(),
+    outputSchema: z.object({entries: z.array(inventoryEntryOutputSchema), nextCursor: z.string().nullable()}).strict(),
+    annotations: readOnlyAnnotations,
+  }, async (input) => toolResult(async () => {
+    const page = await runLinkedFolders(LinkedFolderService.use((service) =>
+      service.listInventory({...input, principal: identity.principal})
+    ));
+    return {entries: page.entries.map(inventoryEntryProjection), nextCursor: page.nextCursor};
+  }));
+
+  registerNudgedTool("folder_link_capture", {
+    title: "Capture pending files from a linked folder",
+    description:
+      "Capture up to 100 named inventory entries, or all pending ones, as linked artifacts placed in mirrored subfolders or as new versions of changed tracked files. Results are reported per entry; omitting idempotencyKey derives a stable key so an identical retry replays.",
+    inputSchema: z.object({
+      ...folderLinkTarget,
+      all: z.boolean().default(false),
+      entryIds: z.array(z.string().max(200)).max(1_000).default([]),
+      idempotencyKey: idempotencyKeySchema.nullable().default(null),
+    }).strict(),
+    outputSchema: z.object({results: z.array(captureResultOutputSchema)}).strict(),
+    annotations: idempotentWriteAnnotations,
+  }, async ({all, entryIds, folderLinkId, idempotencyKey, projectId}) => toolResult(async () => ({
+    results: (await runLinkedFolders(LinkedFolderService.use((service) => service.captureInventory({
+      entryIds: all ? "all-pending" : entryIds,
+      folderLinkId,
+      idempotencyKey: idempotencyKey ?? derivedIdempotencyKey(["folder-capture", folderLinkId, all ? "all" : entryIds.join(",")]),
+      principal: identity.principal,
+      projectId,
+    })))).results,
+  })));
 
   registerNudgedTool(
     "comment_list",
@@ -2342,10 +2806,17 @@ function capabilities(
   mode: "local" | "remote",
   linkedArtifacts: boolean,
   gitHistory: GitHistoryCapability,
+  folders: boolean,
+  trash: boolean,
 ) {
   return {
     gitHistory,
     linkedArtifacts: {available: linkedArtifacts},
+    folders: {available: folders},
+    crossProjectMove: {available: folders},
+    trash: {available: trash, purge: "human-only" as const},
+    fileOverview: {available: folders, maximumPageSize: maximumFilePageSize},
+    batch: {available: folders, maximumItems: maximumBatchItems, operations: [...batchOperations]},
     agentDispatch: {
       bundleThreadRule:
         "1..100 open, undispatched comment threads from one project per bundle",
@@ -2664,12 +3135,13 @@ async function authorizedBrowserUrl(
 async function toolResult<Value extends object>(
   operation: () => Promise<Value>,
   summary?: (value: Value) => string,
+  locate?: (cause: unknown) => Promise<ArtifactLocation | null> | null,
 ) {
   try {
     const value = await operation();
     return successResult(value, summary?.(value));
   } catch (cause) {
-    return failureResult(cause);
+    return failureResult(cause, await locate?.(cause) ?? null);
   }
 }
 
@@ -2725,8 +3197,18 @@ function publicationSummary(published: {
   ].join("\n");
 }
 
-function failureResult(cause: unknown) {
+function failureResult(cause: unknown, location: ArtifactLocation | null = null) {
   const failure = errorProjection(cause);
+  if (location !== null) {
+    return {
+      content: [{
+        text: `${failure.code}: ${failure.message} It moved to project ${location.projectId}; retry with that projectId.`,
+        type: "text" as const,
+      }],
+      isError: true,
+      structuredContent: {error: {...failure, location}},
+    };
+  }
   return {
     content: [{text: `${failure.code}: ${failure.message}`, type: "text" as const}],
     isError: true,
@@ -2747,8 +3229,8 @@ function errorProjection(cause: unknown) {
           message: "The server could not complete the request.",
         };
       default:
-        const response = artifactServerFailureResponse(cause);
-        return {code: response.code, message: response.message};
+        const {status: _status, ...response} = artifactServerFailureResponse(cause);
+        return response;
     }
   }
   return {

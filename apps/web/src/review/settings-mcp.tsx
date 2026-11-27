@@ -4,6 +4,7 @@ import {useEffect, useRef, useState} from "react";
 
 import {PageHeader} from "@/components/product";
 import {Button, ButtonLink} from "@/components/ui/button";
+import {settingsText} from "@/i18n/messages/settings";
 
 type CopyTarget = "doctor" | "local" | "remote" | "skill";
 
@@ -35,98 +36,97 @@ export function McpScreen({administrator}: {readonly administrator: boolean}) {
       );
     } catch {
       setCopiedTarget(null);
-      setFailure("Unable to copy. Select the value and copy it manually.");
+      setFailure(settingsText.mcp.copyFailed);
     }
   };
 
   return (
     <div className="flex flex-col gap-8">
       <PageHeader
-        description="Give AI clients authenticated access to projects, artifacts, versions, and comments. Choose the setup that matches where Artifact Server runs."
-        eyebrow="Connections"
-        title="Connect agents with MCP"
+        description={settingsText.mcp.description}
+        eyebrow={settingsText.mcp.eyebrow}
+        title={settingsText.mcp.title}
       />
 
       {failure === null ? null : (
-        <p className="border border-destructive px-4 py-3 text-sm text-destructive" role="alert">
+        <p className="rounded-[var(--radius-pill)] border border-destructive px-4 py-3 text-sm text-destructive" role="alert">
           {failure}
         </p>
       )}
 
       <div className="grid gap-4 xl:grid-cols-2">
         <ConnectionCard
-          description="Run this on the computer where Artifact Server and your AI client are installed. It detects Codex, Claude Code, Cursor, or VS Code, updates the client configuration, and verifies the connection."
-          eyebrow="Local installation"
-          title="Connect automatically"
+          description={settingsText.mcp.localDescription}
+          eyebrow={settingsText.mcp.localEyebrow}
+          title={settingsText.mcp.localTitle}
         >
           <CopyableValue
             copied={copiedTarget === "local"}
-            label="Copy local connection command"
+            label={settingsText.mcp.copyLocalCommand}
             onCopy={() => void copy("artifactserver connect", "local")}
             value="artifactserver connect"
           />
           <p className="text-xs leading-5 text-muted-foreground text-pretty">
-            If more than one supported client is installed, add its name: <code>codex</code>,{" "}
-            <code>claude</code>, <code>cursor</code>, or <code>vscode</code>.
+            {settingsText.mcp.clientHintLead}<code>codex</code>{settingsText.mcp.clientHintSeparator}<code>claude</code>
+            {settingsText.mcp.clientHintSeparator}<code>cursor</code>{settingsText.mcp.clientHintLastSeparator}<code>vscode</code>
+            {settingsText.mcp.clientHintEnd}
           </p>
         </ConnectionCard>
 
         <ConnectionCard
-          description="Add this exact address in your client’s MCP settings. The client should open browser sign-in when it connects."
-          eyebrow="Team or remote server"
-          title="Connect with the server address"
+          description={settingsText.mcp.remoteDescription}
+          eyebrow={settingsText.mcp.remoteEyebrow}
+          title={settingsText.mcp.remoteTitle}
         >
           <CopyableValue
             copied={copiedTarget === "remote"}
-            label="Copy MCP server address"
+            label={settingsText.mcp.copyRemoteAddress}
             onCopy={() => void copy(mcpAddress, "remote")}
             value={mcpAddress}
           />
           <p className="text-xs leading-5 text-muted-foreground text-pretty">
-            If the client cannot use browser authentication, ask an administrator for a scoped
-            API key. Never paste a key into chat.
+            {settingsText.mcp.remoteHint}
           </p>
           {administrator ? (
             <ButtonLink className="justify-self-start" href="/review/settings/api-keys" size="xs" variant="outline">
-              Manage API keys
+              {settingsText.mcp.manageApiKeys}
             </ButtonLink>
           ) : null}
         </ConnectionCard>
       </div>
 
-      <section className="grid gap-5 border p-5 sm:p-6" aria-labelledby="mcp-after-connection">
+      <section className="grid gap-4 rounded-[var(--radius-card)] border bg-card p-5" aria-labelledby="mcp-after-connection">
         <header className="grid gap-1">
-          <h2 className="font-heading text-lg font-semibold text-balance" id="mcp-after-connection">
-            Check the connection
+          <h2 className="font-heading text-base font-semibold text-balance" id="mcp-after-connection">
+            {settingsText.mcp.checkHeading}
           </h2>
           <p className="max-w-3xl text-sm leading-6 text-muted-foreground text-pretty">
-            Inspect the managed service and client registration without changing either one.
+            {settingsText.mcp.checkDescription}
           </p>
         </header>
         <CopyableValue
           copied={copiedTarget === "doctor"}
-          label="Copy connection check command"
+          label={settingsText.mcp.copyCheckCommand}
           onCopy={() => void copy("artifactserver doctor", "doctor")}
           value="artifactserver doctor"
         />
         <p className="text-xs leading-5 text-muted-foreground text-pretty">
-          To remove a managed local connection, run <code>artifactserver disconnect</code>.
+          {settingsText.mcp.disconnectLead}<code>artifactserver disconnect</code>{settingsText.mcp.disconnectEnd}
         </p>
       </section>
 
-      <section className="grid gap-5 border p-5 sm:p-6" aria-labelledby="mcp-agent-skill">
+      <section className="grid gap-4 rounded-[var(--radius-card)] border bg-card p-5" aria-labelledby="mcp-agent-skill">
         <header className="grid gap-1">
-          <h2 className="font-heading text-lg font-semibold text-balance" id="mcp-agent-skill">
-            Give agents the Artifact Server skill
+          <h2 className="font-heading text-base font-semibold text-balance" id="mcp-agent-skill">
+            {settingsText.mcp.skillHeading}
           </h2>
           <p className="max-w-3xl text-sm leading-6 text-muted-foreground text-pretty">
-            The optional skill teaches an agent to use MCP for server data and the CLI for files
-            on its computer. Artifact bytes are never copied into MCP tool arguments.
+            {settingsText.mcp.skillDescription}
           </p>
         </header>
         <CopyableValue
           copied={copiedTarget === "skill"}
-          label="Copy skill installation command"
+          label={settingsText.mcp.copySkillCommand}
           onCopy={() => void copy("npx skills add plannotator/artifact-server", "skill")}
           value="npx skills add plannotator/artifact-server"
         />
@@ -147,10 +147,10 @@ function ConnectionCard({
   readonly title: string;
 }) {
   return (
-    <section className="flex flex-col gap-5 border p-5 sm:p-6">
-      <header className="grid gap-2">
-        <p className="font-mono text-xs font-semibold text-primary uppercase">{eyebrow}</p>
-        <h2 className="font-heading text-xl font-semibold text-balance">{title}</h2>
+    <section className="flex flex-col gap-4 rounded-[var(--radius-card)] border bg-card p-5">
+      <header className="grid gap-1.5">
+        <h2 className="font-heading text-base font-semibold text-balance">{title}</h2>
+        <p className="text-sm text-muted-foreground">{eyebrow}</p>
         <p className="text-sm leading-6 text-muted-foreground text-pretty">{description}</p>
       </header>
       <div className="mt-auto grid gap-3">{children}</div>
@@ -170,13 +170,13 @@ function CopyableValue({
   readonly value: string;
 }) {
   return (
-    <div className="flex min-w-0 items-stretch border bg-muted/30">
+    <div className="flex min-w-0 items-stretch overflow-hidden rounded-[var(--radius-pill)] border bg-[var(--color-paper-3)]">
       <code className="min-w-0 flex-1 overflow-x-auto px-3 py-2.5 text-xs leading-5 whitespace-nowrap">
         {value}
       </code>
       <Button
-        aria-label={copied ? "Copied" : label}
-        className="shrink-0 border-y-0 border-r-0"
+        aria-label={copied ? settingsText.mcp.copied : label}
+        className="h-auto shrink-0 rounded-none border-y-0 border-r-0"
         onClick={onCopy}
         size="sm"
         type="button"
@@ -187,7 +187,7 @@ function CopyableValue({
           icon={copied ? Tick02Icon : Copy01Icon}
           strokeWidth={1.8}
         />
-        {copied ? "Copied" : "Copy"}
+        {copied ? settingsText.mcp.copied : settingsText.mcp.copy}
       </Button>
     </div>
   );

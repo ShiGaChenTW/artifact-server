@@ -1,0 +1,26 @@
+/*
+ * Workbench tokens for the Artifact Server application: scale, type, radius,
+ * motion and layers. Colours come from a theme in src/themes/ (the default
+ * is themes/plannotator.css), which defines the same --color-* tokens for
+ * light and dark.
+ */
+:root {
+  --space-3xs: 2px; --space-2xs: 4px; --space-xs: 8px; --space-sm: 12px; --space-md: 16px; --space-lg: 24px; --space-xl: 40px; --space-2xl: 64px; --space-3xl: 96px; --space-4xl: 144px;
+  --text-xs: 0.75rem; --text-sm: 0.8125rem; --text-md: 0.875rem; --text-lg: 1rem; --text-xl: 1.25rem; --text-2xl: 1.5rem; --text-3xl: 1.875rem;
+  --text-display-s: 1.25rem; --text-display: 1.5rem; --text-section: 1rem; --text-title: 0.875rem; --text-lead: 0.875rem;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); --ease-in: cubic-bezier(0.7, 0, 0.84, 0); --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro: 120ms; --dur-short: 200ms; --dur-long: 380ms;
+  --container: 1200px; --gutter: 40px; --gap-columns: 24px; --section-gap-s: 120px; --section-gap: 144px; --section-gap-l: 176px;
+  --z-base: 1; --z-raised: 10; --z-dropdown: 100; --z-sticky: 200; --z-sticky-nav: 300; --z-modal: 400; --z-toast: 500; --z-tooltip: 600;
+  /* Latin from Geist; Han characters fall to the system's Traditional Chinese
+     face (no CJK webfont: the CSP serves fonts from self only). */
+  --font-display: "Geist Variable", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", ui-sans-serif, system-ui, sans-serif; --font-body: var(--font-display);
+  --font-outlier: "Geist Mono Variable", "PingFang TC", "Noto Sans TC", ui-monospace, monospace;
+  --radius-card: 8px; --radius-pill: 6px; --radius-chip: 4px; --rule-hair: 1px;
+  --shadow-card: none;
+  --shadow-overlay: 0 12px 32px -8px var(--color-overlay-shadow), 0 2px 6px -2px var(--color-overlay-shadow);
+  --tracking-display: -0.02em; --display-weight: 600;
+  --status-height: 28px;
+
+}
+

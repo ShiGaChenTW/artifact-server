@@ -1,3 +1,9 @@
+import {folderText} from "@/i18n/messages/folders";
+import type {Folder} from "@/api/client";
+import {
+  ArtifactFolderLocation, FolderBreadcrumbs, FolderDialog, type FolderDialogAction, locateMovedArtifact,
+  visibleArtifactName,
+} from "./review-folders.tsx";
 import {
   lazy,
   type MouseEvent as ReactMouseEvent,
@@ -21,6 +27,7 @@ import {
   Edit02Icon,
   ExternalLinkIcon,
   File01Icon,
+  Folder01Icon,
   FilterIcon,
   FullScreenIcon,
   GithubIcon,
@@ -33,6 +40,8 @@ import {
   RefreshIcon,
   Search01Icon,
   DashboardSquare01Icon,
+  Delete02Icon,
+  FolderSyncIcon,
   Settings02Icon,
   Sun03Icon,
   Tick02Icon,
@@ -60,10 +69,17 @@ import {
 import {
   actionLabel,
   formatBytes,
+  formatRelativeTime,
   formatTimestamp,
   sourceDriftDescription,
   sourceFreshnessLabel,
-} from "@/lib/presentation";
+  displayError} from "@/lib/presentation";
+import {refinementText} from "@/i18n/messages/review-refinements";
+import {recordReviewVisit} from "@/lib/review-visits";
+import {ReviewCommandPalette, ReviewKeyboardDialog} from "./review-command-palette.tsx";
+import {ComparisonPreview} from "./comparison-preview.tsx";
+import {useCatalogOpenCounts} from "./use-catalog-open-counts.ts";
+import {reviewAppText} from "@/i18n/messages/review-app";
 import artifactServerAnimationUrl from "./assets/artifact-server.svg";
 import {ArtifactMark} from "./artifact-mark.tsx";
 import {
@@ -72,8 +88,17 @@ import {
   type ReviewCommentsInspectorHandle,
 } from "./review-comments.tsx";
 import { ReviewPreview } from "./review-preview.tsx";
+import {readReviewTheme, type ReviewTheme} from "./review-theme.ts";
 import {ReviewProjectPicker} from "./review-project-picker.tsx";
-import {dashboardPath, isDashboardPath, isSettingsPath} from "./review-routes.ts";
+import {
+  dashboardPath, filesPath, isDashboardPath, isFilesPath, isLinkedFoldersPath, isSettingsPath, isTrashPath,
+  linkedFoldersPath, trashPath,
+} from "./review-routes.ts";
+import {FilesPage} from "./review-files.tsx";
+import {filesText} from "@/i18n/messages/files";
+import {MoveToTrashButton, TrashPage, useTrashUndo} from "./review-trash.tsx";
+import {trashText} from "@/i18n/messages/trash";
+import {linkedFolderText} from "@/i18n/messages/linked-folders";
 import {ReviewSettings} from "./review-settings.tsx";
 import {ReviewPanelEdge} from "./review-panel-edge.tsx";
 import {AgentLogos, ReviewShareControl} from "./review-share.tsx";
@@ -81,12 +106,16 @@ import {useReviewPanelMotion} from "./use-review-panel-motion.ts";
 import {useReviewResizablePanel} from "./use-review-resizable-panel.ts";
 import {useWebmcp, type WebmcpBindings} from "./webmcp.tsx";
 
+// The linked-folders page loads only when someone opens it.
+const LinkedFoldersPage = lazy(async () => ({
+  default: (await import("./linked-folders-page.tsx")).LinkedFoldersPage,
+}));
+
 // The dashboard and its chart library load only when someone opens it.
 const DashboardPage = lazy(async () => ({
   default: (await import("../dashboard/dashboard-page.tsx")).DashboardPage,
 }));
 
-type ReviewTheme = "dawn" | "moon";
 type InspectorTab = "activity" | "comments" | "compare" | "details" | "files" | "versions";
 type ArtifactListLoadResult = "failed" | "loaded" | "skipped";
 type CatalogCommentFilter = "all" | "with" | "without";
@@ -102,14 +131,7 @@ const inspectorGapPixels = 12;
 const catalogRefreshConfirmationMilliseconds = 1_600;
 
 function reviewShortcutBlocked(event: KeyboardEvent): boolean {
-  if (
-    event.defaultPrevented
-    || event.isComposing
-    || event.altKey
-    || event.ctrlKey
-    || event.metaKey
-    || event.shiftKey
-  ) {
+  if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.altKey) {
     return true;
   }
 
@@ -149,11 +171,13 @@ interface ReviewDownload {
 }
 
 interface ReviewLocation {
+  readonly folderId: string | null;
   readonly artifactId: string | null;
   readonly path: string | null;
   readonly projectId: string | null;
   readonly versionId: string | null;
   readonly view: "focus" | null;
+  readonly threadId?: string | null;
 }
 
 function CatalogFilters({
@@ -170,17 +194,17 @@ function CatalogFilters({
   readonly tagFilters: readonly string[];
 }) {
   const activeFilterCount = Number(commentFilter !== "all") + tagFilters.length;
-  let triggerLabel = "All artifacts";
+  let triggerLabel = reviewAppText.filter.allArtifacts;
   if (commentFilter === "all" && tagFilters.length === 1) {
-    triggerLabel = tagFilters[0] ?? "1 tag";
+    triggerLabel = tagFilters[0] ?? reviewAppText.filter.oneTag;
   } else if (commentFilter === "all" && tagFilters.length > 1) {
-    triggerLabel = `${tagFilters.length} tags`;
+    triggerLabel = reviewAppText.filter.tagCount(tagFilters.length);
   } else if (commentFilter === "with" && tagFilters.length === 0) {
-    triggerLabel = "With comments";
+    triggerLabel = reviewAppText.filter.withComments;
   } else if (commentFilter === "without" && tagFilters.length === 0) {
-    triggerLabel = "No comments";
+    triggerLabel = reviewAppText.filter.noComments;
   } else if (activeFilterCount > 0) {
-    triggerLabel = `${activeFilterCount} filters`;
+    triggerLabel = reviewAppText.filter.filterCount(activeFilterCount);
   }
   const tags = [...new Set([...knownTags, ...tagFilters])].toSorted();
   const toggleTag = (tag: string): void => {
@@ -196,7 +220,7 @@ function CatalogFilters({
       <Popover.Trigger
         render={(
           <button
-            aria-label={`Filter artifacts. ${activeFilterCount === 0 ? "No filters applied" : `${activeFilterCount} applied`}.`}
+            aria-label={reviewAppText.filter.triggerLabel(activeFilterCount)}
             className="as-catalog-filter-trigger"
             type="button"
           />
@@ -216,7 +240,7 @@ function CatalogFilters({
           className="as-catalog-filter-positioner"
           sideOffset={6}
         >
-          <Popover.Popup aria-label="Filter artifacts" className="as-catalog-filter-popover">
+          <Popover.Popup aria-label={reviewAppText.filter.popupLabel} className="as-catalog-filter-popover">
             {activeFilterCount === 0 ? null : (
               <div className="as-catalog-filter-popover__actions">
                 <button
@@ -227,16 +251,16 @@ function CatalogFilters({
                   }}
                   type="button"
                 >
-                  Clear filters
+                  {reviewAppText.filter.clear}
                 </button>
               </div>
             )}
             <fieldset>
-              <legend>Comments</legend>
+              <legend>{reviewAppText.filter.commentsLegend}</legend>
               {([
-                ["all", "All artifacts"],
-                ["with", "With comments"],
-                ["without", "No comments"],
+                ["all", reviewAppText.filter.allArtifacts],
+                ["with", reviewAppText.filter.withComments],
+                ["without", reviewAppText.filter.noComments],
               ] as const).map(([value, label]) => (
                 <label className="as-catalog-filter-option" data-selected={commentFilter === value} key={value}>
                   <input
@@ -254,7 +278,7 @@ function CatalogFilters({
               ))}
             </fieldset>
             <fieldset>
-              <legend>Tags</legend>
+              <legend>{reviewAppText.filter.tagsLegend}</legend>
               <button
                 aria-pressed={tagFilters.length === 0}
                 className="as-catalog-filter-option"
@@ -262,13 +286,13 @@ function CatalogFilters({
                 onClick={() => onTagFiltersChange([])}
                 type="button"
               >
-                <span>Any tag</span>
+                <span>{reviewAppText.filter.anyTag}</span>
                 {tagFilters.length === 0 ? (
                   <HugeiconsIcon aria-hidden="true" icon={Tick02Icon} strokeWidth={2} />
                 ) : null}
               </button>
               {tags.length === 0 ? (
-                <p className="as-catalog-filter-popover__empty">No tags in the loaded catalog.</p>
+                <p className="as-catalog-filter-popover__empty">{reviewAppText.filter.noTags}</p>
               ) : tags.map((tag) => (
                 <label className="as-catalog-filter-option" data-selected={tagFilters.includes(tag)} key={tag}>
                   <input
@@ -294,72 +318,51 @@ function CatalogFilters({
 
 function ReviewKeyboardShortcuts() {
   return (
-    <Popover.Root>
-      <Popover.Trigger
-        render={(
-          <button
-            aria-label="Keyboard shortcuts"
-            className="as-keyboard-shortcuts__trigger"
-            title="Keyboard shortcuts"
-            type="button"
-          />
-        )}
-      >
-        <HugeiconsIcon aria-hidden="true" icon={KeyboardIcon} strokeWidth={1.8} />
-      </Popover.Trigger>
-      <Popover.Portal>
-        <Popover.Positioner
-          align="end"
-          className="as-keyboard-shortcuts__positioner"
-          side="top"
-          sideOffset={8}
-        >
-          <Popover.Popup className="as-keyboard-shortcuts">
-            <Popover.Title className="as-keyboard-shortcuts__title">
-              Keyboard shortcuts
-            </Popover.Title>
-            <section aria-labelledby="review-shortcuts-navigation">
-              <h3 id="review-shortcuts-navigation">Navigate</h3>
-              <dl>
-                <div>
-                  <dt>Previous artifact</dt>
-                  <dd><kbd>K</kbd><span>or</span><kbd>↑</kbd></dd>
-                </div>
-                <div>
-                  <dt>Next artifact</dt>
-                  <dd><kbd>J</kbd><span>or</span><kbd>↓</kbd></dd>
-                </div>
-              </dl>
-            </section>
-            <section aria-labelledby="review-shortcuts-layout">
-              <h3 id="review-shortcuts-layout">Layout</h3>
-              <dl>
-                <div>
-                  <dt>Artifact catalog</dt>
-                  <dd><kbd>[</kbd></dd>
-                </div>
-                <div>
-                  <dt>Inspector or comments</dt>
-                  <dd><kbd>]</kbd></dd>
-                </div>
-                <div>
-                  <dt>Full screen</dt>
-                  <dd><kbd>F</kbd></dd>
-                </div>
-                <div>
-                  <dt>Back or close current layer</dt>
-                  <dd><kbd>Esc</kbd></dd>
-                </div>
-                <div>
-                  <dt>Reveal hidden viewer controls</dt>
-                  <dd><kbd>⌘ / Ctrl</kbd><span>+</span><kbd>\</kbd></dd>
-                </div>
-              </dl>
-            </section>
-          </Popover.Popup>
-        </Popover.Positioner>
-      </Popover.Portal>
-    </Popover.Root>
+    <div className="as-keyboard-shortcuts">
+      <section aria-labelledby="review-shortcuts-navigation">
+        <h3 id="review-shortcuts-navigation">{reviewAppText.shortcuts.navigate}</h3>
+        <dl>
+          <div>
+            <dt>{reviewAppText.shortcuts.previousArtifact}</dt>
+            <dd><kbd>K</kbd><span>{reviewAppText.shortcuts.or}</span><kbd>↑</kbd></dd>
+          </div>
+          <div>
+            <dt>{reviewAppText.shortcuts.nextArtifact}</dt>
+            <dd><kbd>J</kbd><span>{reviewAppText.shortcuts.or}</span><kbd>↓</kbd></dd>
+          </div>
+        </dl>
+      </section>
+      <section aria-labelledby="review-shortcuts-layout">
+        <h3 id="review-shortcuts-layout">{reviewAppText.shortcuts.layout}</h3>
+        <dl>
+          <div>
+            <dt>{reviewAppText.shortcuts.catalog}</dt>
+            <dd><kbd>[</kbd></dd>
+          </div>
+          <div>
+            <dt>{reviewAppText.shortcuts.inspectorOrComments}</dt>
+            <dd><kbd>]</kbd></dd>
+          </div>
+          <div>
+            <dt>{reviewAppText.shortcuts.fullScreen}</dt>
+            <dd><kbd>F</kbd></dd>
+          </div>
+          <div>
+            <dt>{reviewAppText.shortcuts.backOrClose}</dt>
+            <dd><kbd>Esc</kbd></dd>
+          </div>
+          <div>
+            <dt>{reviewAppText.shortcuts.revealControls}</dt>
+            <dd><kbd>⌘ / Ctrl</kbd><span>+</span><kbd>\</kbd></dd>
+          </div>
+        </dl>
+      </section>
+      <dl>
+        <div><dt>{refinementText.palette.title}</dt><dd><kbd>⌘K / Ctrl+K</kbd></dd></div>
+        <div><dt>{refinementText.palette.submit}</dt><dd><kbd>⌘↵ / Ctrl+Enter</kbd></dd></div>
+        <div><dt>{reviewAppText.shortcuts.title}</dt><dd><kbd>?</kbd></dd></div>
+      </dl>
+    </div>
   );
 }
 
@@ -376,7 +379,7 @@ export function ReviewApp() {
     "loading" | "ready" | "unauthenticated"
   >("loading");
   const [error, setError] = useState<Error | null>(null);
-  const [theme, setTheme] = useState<ReviewTheme>(readInitialTheme);
+  const [theme, setTheme] = useState<ReviewTheme>(readReviewTheme);
 
   const bootstrap = useCallback(async (): Promise<void> => {
     if (bootstrapInFlightRef.current) return;
@@ -417,7 +420,7 @@ export function ReviewApp() {
         setError(
           caught instanceof Error
             ? caught
-            : new Error("Artifact Server could not start."),
+            : new Error(reviewAppText.gate.startFailed),
         );
         setSessionState("ready");
       }
@@ -443,7 +446,11 @@ export function ReviewApp() {
   useEffect(() => {
     document.documentElement.dataset["reviewTheme"] = theme;
     document.documentElement.classList.toggle("dark", theme === "moon");
-    window.localStorage.setItem("artifact-review-theme", theme);
+    try {
+      window.localStorage.setItem("artifact-review-theme", theme);
+    } catch {
+      // The active theme still applies when storage is blocked.
+    }
   }, [theme]);
 
   const createProject = useCallback(async (name: string): Promise<Project> => {
@@ -461,7 +468,7 @@ export function ReviewApp() {
   }, []);
 
   if (sessionState === "loading") {
-    return <ReviewGate description="Opening the local artifact catalog." title="Loading Artifact Server" />;
+    return <ReviewGate description={reviewAppText.gate.loadingDescription} title={reviewAppText.gate.loadingTitle} />;
   }
   if (sessionState === "unauthenticated") {
     const returnTo = `${window.location.pathname}${window.location.search}`;
@@ -469,20 +476,20 @@ export function ReviewApp() {
       <ReviewGate
         action={(
           <a className="as-button as-button--primary" href={`/auth/login?returnTo=${encodeURIComponent(returnTo)}`}>
-            Sign in
+            {reviewAppText.gate.signIn}
           </a>
         )}
-        description="This installation requires an authenticated browser session."
-        title="Sign in required"
+        description={reviewAppText.gate.signInDescription}
+        title={reviewAppText.gate.signInTitle}
       />
     );
   }
   if (error !== null) {
     return (
       <ReviewGate
-        action={<button className="as-button" onClick={() => void bootstrap()} type="button">Try again</button>}
-        description={error.message}
-        title="Artifact Server unavailable"
+        action={<button className="as-button" onClick={() => void bootstrap()} type="button">{reviewAppText.gate.tryAgain}</button>}
+        description={displayError(error)}
+        title={reviewAppText.gate.unavailableTitle}
       />
     );
   }
@@ -492,6 +499,40 @@ export function ReviewApp() {
     return (
       <Suspense fallback={null}>
         <DashboardPage
+          principalId={session.principal.id}
+          onThemeChange={() => setTheme((current) => current === "moon" ? "dawn" : "moon")}
+          projects={projects}
+          theme={theme}
+        />
+      </Suspense>
+    );
+  }
+
+  if (session.capabilities.fileOverview && isFilesPath(window.location.pathname)) {
+    return (
+      <FilesPage
+        onThemeChange={() => setTheme((current) => current === "moon" ? "dawn" : "moon")}
+        projects={projects}
+        session={session}
+        theme={theme}
+      />
+    );
+  }
+
+  if (session.capabilities.trash && isTrashPath(window.location.pathname)) {
+    return (
+      <TrashPage
+        onThemeChange={() => setTheme((current) => current === "moon" ? "dawn" : "moon")}
+        projects={projects}
+        theme={theme}
+      />
+    );
+  }
+
+  if (isLinkedFoldersPath(window.location.pathname) && session.capabilities.linkedFolders) {
+    return (
+      <Suspense fallback={null}>
+        <LinkedFoldersPage
           onThemeChange={() => setTheme((current) => current === "moon" ? "dawn" : "moon")}
           projects={projects}
           theme={theme}
@@ -542,6 +583,12 @@ function ArtifactReview({
     ?? projects[0]?.id
     ?? "";
   const [projectId, setProjectId] = useState(initialProjectId);
+  const foldersAvailable = session.capabilities.folders;
+  const [folderId, setFolderId] = useState(foldersAvailable ? initialLocation.folderId : null);
+  const [folders, setFolders] = useState<readonly Folder[]>([]);
+  const [breadcrumbs, setBreadcrumbs] = useState<readonly Folder[]>([]);
+  const [folderDialog, setFolderDialog] = useState<FolderDialogAction | null>(null);
+  const [folderChanges, setFolderChanges] = useState(0);
   const [items, setItems] = useState<ArtifactPage["artifacts"]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(
@@ -570,19 +617,46 @@ function ArtifactReview({
   const [actionNextCursor, setActionNextCursor] = useState<string | null>(null);
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityError, setActivityError] = useState<Error | null>(null);
+  const [sideBySide, setSideBySide] = useState(false);
   const [comparison, setComparison] = useState<ArtifactComparison | null>(null);
   const [comparisonLoading, setComparisonLoading] = useState(false);
   const [comparisonError, setComparisonError] = useState<Error | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<ArtifactVersion | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<Error | null>(null);
-  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("details");
+  const [linkedThreadId, setLinkedThreadId] = useState(initialLocation.threadId ?? null);
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>(linkedThreadId === null ? "details" : "comments");
+  const [keyboardDialog, setKeyboardDialog] = useState<"palette" | "shortcuts" | null>(null);
+  const [sendRequested, setSendRequested] = useState(false);
+  const keyboardReturnFocus = useRef<HTMLElement | null>(null);
+  const openKeyboardDialog = useCallback((dialog: "palette" | "shortcuts"): void => {
+    keyboardReturnFocus.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement : null;
+    setKeyboardDialog(dialog);
+  }, []);
   const [catalogOpen, setCatalogOpen] = useState(true);
-  const [inspectorOpen, setInspectorOpen] = useState(readInitialInspectorOpen);
+  const [inspectorOpen, setInspectorOpen] = useState(() => linkedThreadId !== null || readInitialInspectorOpen());
   const [opening, setOpening] = useState(false);
   const [focusMode, setFocusMode] = useState(initialLocation.view === "focus");
   const [focusCommentsOpen, setFocusCommentsOpen] = useState(false);
-  const [focusControlsCollapsed, setFocusControlsCollapsed] = useState(false);
+  const [focusControlsCollapsed, setFocusControlsCollapsed] = useState(true);
+  const [initialFocusCollapse, setInitialFocusCollapse] = useState(true);
+  const [focusHint, setFocusHint] = useState(false);
+  const hintShown = useRef(false);
+  useEffect(() => {
+    if (!focusMode) return;
+    setFocusControlsCollapsed(true);
+    setInitialFocusCollapse(true);
+    if (hintShown.current) return;
+    hintShown.current = true;
+    try {
+      if (window.localStorage.getItem("artifact-review-focus-hint") === "seen") return;
+      window.localStorage.setItem("artifact-review-focus-hint", "seen");
+    } catch {
+      // In-memory state still limits the hint to once during this page visit.
+    }
+    setFocusHint(true);
+  }, [focusMode]);
   const [focusControlsHoverArmed, setFocusControlsHoverArmed] = useState(true);
   const [focusControlsInstant, setFocusControlsInstant] = useState(false);
   const [htmlAnnotateModeActive, setHtmlAnnotateModeActive] = useState(true);
@@ -634,6 +708,7 @@ function ArtifactReview({
   }, []);
   const comments = useReviewComments({
     artifactId: selectedArtifactId,
+    onPathChanged: setSelectedPath,
     onVersionChanged: followCommentVersion,
     projectId,
     versionId: selectedVersionId,
@@ -688,6 +763,7 @@ function ArtifactReview({
   const catalogItems = useMemo<ArtifactPage["artifacts"]>(() => {
     if (
       details === null
+      || (foldersAvailable && (details.artifact.folderId ?? null) !== folderId)
       || searchQuery !== ""
       || catalogCommentFilter !== "all"
       || catalogTagFilters.length > 0
@@ -704,13 +780,27 @@ function ArtifactReview({
     catalogTagFilters.length,
     comments.threads.length,
     details,
+    folderId,
+    foldersAvailable,
     items,
     searchQuery,
     versions.length,
   ]);
+  const duplicateNames = useMemo(() => {
+    const seen = new Set<string>();
+    const duplicates = new Set<string>();
+    for (const {artifact} of catalogItems) {
+      if (seen.has(artifact.name)) duplicates.add(artifact.name);
+      seen.add(artifact.name);
+    }
+    return duplicates;
+  }, [catalogItems]);
   const selectedIndex = catalogItems.findIndex(
     ({artifact}) => artifact.id === selectedArtifactId,
   );
+  const catalogOpenCounts = useCatalogOpenCounts({
+    comments: comments.threads, items: catalogItems, projectId, selectedArtifactId,
+  });
   const selectedItem = selectedIndex < 0 ? null : catalogItems[selectedIndex] ?? null;
   const loadArtifacts = useCallback(async (
     cursor: string | null,
@@ -724,6 +814,7 @@ function ArtifactReview({
       const page = await api.artifacts(projectId, cursor, catalogTagFilters, searchQuery, {
         comments: catalogCommentFilter,
         sort: catalogSort,
+        folderId: foldersAvailable ? folderId : undefined,
       });
       if (requestGeneration !== catalogRequestGenerationRef.current) return "skipped";
       setCatalogKnownTags((current) => {
@@ -733,9 +824,13 @@ function ArtifactReview({
         }
         return [...next].toSorted();
       });
+      if ("folders" in page) {
+        setBreadcrumbs(page.breadcrumbs);
+        setFolders((current) => replace ? page.folders : [...current, ...page.folders]);
+      }
       setItems((current) => replace ? page.artifacts : [...current, ...page.artifacts]);
       setNextCursor(page.nextCursor);
-      if (replace) {
+      if (replace || foldersAvailable) {
         setSelectedArtifactId((current) => {
           return current ?? page.artifacts[0]?.artifact.id ?? null;
         });
@@ -744,7 +839,7 @@ function ArtifactReview({
     } catch (caught) {
       if (requestGeneration === catalogRequestGenerationRef.current) {
         setListError(
-          caught instanceof Error ? caught : new Error("Artifact list failed."),
+          caught instanceof Error ? caught : new Error(reviewAppText.catalog.listFailed),
         );
       }
       return "failed";
@@ -753,7 +848,7 @@ function ArtifactReview({
         setListLoading(false);
       }
     }
-  }, [catalogCommentFilter, catalogSort, catalogTagFilters, projectId, searchQuery]);
+  }, [catalogCommentFilter, catalogSort, catalogTagFilters, folderId, foldersAvailable, projectId, searchQuery]);
 
   const refreshArtifacts = useCallback(async (): Promise<void> => {
     if (listLoading) return;
@@ -787,8 +882,22 @@ function ArtifactReview({
     }
     setCatalogRefreshState("idle");
     setItems([]);
+    setFolders([]);
+    setBreadcrumbs([]);
     void loadArtifacts(null, true);
   }, [loadArtifacts]);
+
+  const crossProjectMove = session.capabilities.crossProjectMove;
+  // A cross-project move keeps every ID, so Review follows the artifact or
+  // folder to its new project instead of showing an old project-scoped miss.
+  const openMovedLocation = useCallback((nextProjectId: string, nextFolderId: string | null, artifactId: string | null): void => {
+    setCatalogKnownTags([]);
+    setCatalogTagFilters([]);
+    setProjectId(nextProjectId);
+    setFolderId(foldersAvailable ? nextFolderId : null);
+    setSelectedArtifactId(artifactId);
+    setDetailError(null);
+  }, [foldersAvailable]);
 
   useEffect(() => {
     if (selectedArtifactId === null || projectId === "") {
@@ -813,6 +922,7 @@ function ArtifactReview({
           api.versions(projectId, selectedArtifactId),
         ]);
         if (!current) return;
+        recordReviewVisit(session.principal.id, loadedDetails.artifact.id);
         setDetails(loadedDetails);
         setVersions(loadedVersions);
         setSelectedVersionId((selected) => {
@@ -820,11 +930,19 @@ function ArtifactReview({
         });
       } catch (caught) {
         if (!current) return;
+        const moved = crossProjectMove && caught instanceof ApiError && caught.code === "ARTIFACT_NOT_FOUND"
+          ? await locateMovedArtifact(selectedArtifactId, projectId)
+          : null;
+        if (!current) return;
+        if (moved !== null) {
+          openMovedLocation(moved.projectId, moved.folderId, moved.artifactId);
+          return;
+        }
         setDetails(null);
         setVersions([]);
         setSelectedVersion(null);
         setDetailError(
-          caught instanceof Error ? caught : new Error("Artifact details failed."),
+          caught instanceof Error ? caught : new Error(reviewAppText.errors.detailsFailed),
         );
       } finally {
         if (current) setDetailLoading(false);
@@ -833,7 +951,7 @@ function ArtifactReview({
     return () => {
       current = false;
     };
-  }, [projectId, selectedArtifactId]);
+  }, [crossProjectMove, openMovedLocation, projectId, selectedArtifactId, session.principal.id]);
 
   const refreshLinkedDetails = useCallback(async (): Promise<void> => {
     if (selectedArtifactId === null || projectId === "") return;
@@ -858,7 +976,7 @@ function ArtifactReview({
       setActions((current) => cursor === null ? page.actions : [...current, ...page.actions]);
       setActionNextCursor(page.nextCursor);
     } catch (caught) {
-      setActivityError(caught instanceof Error ? caught : new Error("Activity loading failed."));
+      setActivityError(caught instanceof Error ? caught : new Error(reviewAppText.errors.activityFailed));
     } finally {
       setActivityLoading(false);
     }
@@ -896,7 +1014,7 @@ function ArtifactReview({
       } catch (caught) {
         if (!current) return;
         setDetailError(
-          caught instanceof Error ? caught : new Error("Version loading failed."),
+          caught instanceof Error ? caught : new Error(reviewAppText.errors.versionFailed),
         );
       }
     })();
@@ -909,13 +1027,15 @@ function ArtifactReview({
     const href = reviewHref({
       artifactId: selectedArtifactId,
       path: selectedPath,
+      folderId,
       projectId,
       versionId: selectedVersionId,
+      threadId: linkedThreadId,
       view: focusMode ? "focus" : null,
     });
     window.history.replaceState(null, "", href);
     window.sessionStorage.setItem("artifact-review-return-url", href);
-  }, [focusMode, projectId, selectedArtifactId, selectedPath, selectedVersionId]);
+  }, [focusMode, folderId, linkedThreadId, projectId, selectedArtifactId, selectedPath, selectedVersionId]);
 
   useEffect(() => {
     const restoreLocation = (): void => {
@@ -925,14 +1045,21 @@ function ArtifactReview({
         setCatalogTagFilters([]);
         setProjectId(restored.projectId);
       }
+      setFolderId(foldersAvailable ? restored.folderId : null);
       setSelectedArtifactId(restored.artifactId);
       setSelectedVersionId(restored.versionId);
       setSelectedPath(restored.path);
+      setLinkedThreadId(restored.threadId ?? null);
+      if (restored.threadId !== null && restored.threadId !== undefined) {
+        setInspectorTab("comments");
+        setInspectorOpen(true);
+      }
+      setFocusHint(false);
       setFocusMode(restored.view === "focus");
     };
     window.addEventListener("popstate", restoreLocation);
     return () => window.removeEventListener("popstate", restoreLocation);
-  }, []);
+  }, [foldersAvailable]);
 
   const openRawArtifact = async (): Promise<void> => {
     if (selectedArtifactId === null || selectedVersionId === null) return;
@@ -954,7 +1081,7 @@ function ArtifactReview({
     } catch (caught) {
       popup?.close();
       setDetailError(
-        caught instanceof Error ? caught : new Error("Artifact opening failed."),
+        caught instanceof Error ? caught : new Error(reviewAppText.errors.openFailed),
       );
     } finally {
       setOpening(false);
@@ -986,31 +1113,54 @@ function ArtifactReview({
     && session.principal.membershipRole === "administrator"
   ) || session.principal.capabilities.includes("artifact:manage:any");
   const previewKind = reviewPreviewKind(selectedVersion, selectedPath);
+  // Markdown renders in the same review sandbox as HTML, so it annotates too.
+  const previewAnnotatable = previewKind === "html"
+    || reviewEntryIsMarkdown(selectedVersion, selectedPath);
   const download = reviewDownload(
     projectId,
     selectedArtifactId,
     selectedVersion,
   );
   const selectArtifact = useCallback((artifactId: string, versionId?: string): void => {
+    setLinkedThreadId(null);
     setDetailError(null);
     setSelectedArtifactId(artifactId);
     setSelectedVersionId(versionId ?? null);
     setSelectedPath(null);
   }, []);
+  const trashUndo = useTrashUndo(async (artifact) => {
+    if (artifact.projectId !== projectId) return;
+    await loadArtifacts(null, true);
+    selectArtifact(artifact.id);
+  });
   const selectProject = (nextProjectId: string): void => {
     if (nextProjectId !== projectId) {
       setCatalogKnownTags([]);
       setCatalogTagFilters([]);
+      setLinkedThreadId(null);
+      setFolderId(null);
       setSelectedArtifactId(null);
       setSelectedVersionId(null);
       setSelectedPath(null);
     }
     setProjectId(nextProjectId);
   };
+  const navigateFolder = (id: string | null): void => {
+    if (id === folderId) return;
+    window.history.pushState(null, "", reviewHref({
+      artifactId: null, folderId: id, path: null, projectId, versionId: null, view: null,
+    }));
+    setFolderId(id);
+    setSelectedArtifactId(null);
+    setSelectedVersionId(null);
+    setSelectedPath(null);
+    setDetailError(null);
+  };
   const selectManifestPath = (path: string): void => {
     window.history.pushState(null, "", reviewHref({
       artifactId: selectedArtifactId,
       path,
+      folderId,
       projectId,
       versionId: selectedVersionId,
       view: focusMode ? "focus" : null,
@@ -1072,13 +1222,11 @@ function ArtifactReview({
         } catch {
           // Keep the original conflict visible when refreshing pointer state fails.
         }
-        setDetailError(new Error(
-          "The current version changed before this action completed. Nothing was changed; the latest version state has been reloaded.",
-        ));
+        setDetailError(new Error(reviewAppText.errors.versionChanged));
         return false;
       }
       setDetailError(
-        caught instanceof Error ? caught : new Error("The version could not be made current."),
+        caught instanceof Error ? caught : new Error(reviewAppText.errors.makeCurrentFailed),
       );
       return false;
     }
@@ -1088,6 +1236,7 @@ function ArtifactReview({
     setComparisonLoading(true);
     setComparisonError(null);
     try {
+      setSideBySide(false);
       setComparison(await api.comparison(
         details.artifact.projectId,
         details.artifact.id,
@@ -1096,7 +1245,7 @@ function ArtifactReview({
       ));
       setInspectorTab("compare");
     } catch (caught) {
-      setComparisonError(caught instanceof Error ? caught : new Error("Version comparison failed."));
+      setComparisonError(caught instanceof Error ? caught : new Error(reviewAppText.errors.compareFailed));
     } finally {
       setComparisonLoading(false);
     }
@@ -1121,7 +1270,7 @@ function ArtifactReview({
       setSelectedVersionId(captured.version.id);
       updateArtifact(loadedDetails.artifact);
     } catch (caught) {
-      setDetailError(caught instanceof Error ? caught : new Error("Linked artifact capture failed."));
+      setDetailError(caught instanceof Error ? caught : new Error(reviewAppText.errors.captureFailed));
     } finally {
       setDetailLoading(false);
     }
@@ -1139,7 +1288,7 @@ function ArtifactReview({
       }
     } catch (caught) {
       popup?.close();
-      setDetailError(caught instanceof Error ? caught : new Error("Live artifact opening failed."));
+      setDetailError(caught instanceof Error ? caught : new Error(reviewAppText.errors.liveFailed));
     }
   };
   const tombstoneArtifact = async (): Promise<boolean> => {
@@ -1153,6 +1302,9 @@ function ArtifactReview({
         crypto.randomUUID(),
       );
       setItems((current) => current.filter(({artifact}) => artifact.id !== details.artifact.id));
+      if (session.capabilities.trash) {
+        trashUndo.trashed({id: details.artifact.id, name: details.artifact.name, projectId: details.artifact.projectId});
+      }
       setSelectedArtifactId(null);
       setSelectedVersionId(null);
       setSelectedPath(null);
@@ -1161,7 +1313,7 @@ function ArtifactReview({
       void loadArtifacts(null, true);
       return true;
     } catch (caught) {
-      setDetailError(caught instanceof Error ? caught : new Error("Artifact deletion failed."));
+      setDetailError(caught instanceof Error ? caught : new Error(reviewAppText.errors.deleteFailed));
       return false;
     }
   };
@@ -1169,31 +1321,45 @@ function ArtifactReview({
     window.history.pushState(null, "", reviewHref({
       artifactId: selectedArtifactId,
       path: selectedPath,
+      folderId,
       projectId,
       versionId: selectedVersionId,
       view: "focus",
     }));
     setFocusCommentsOpen(false);
-    setFocusControlsCollapsed(false);
+    setFocusControlsCollapsed(true);
     setFocusMode(true);
-  }, [projectId, selectedArtifactId, selectedPath, selectedVersionId]);
+  }, [folderId, projectId, selectedArtifactId, selectedPath, selectedVersionId]);
   const exitFocusMode = useCallback((): void => {
     window.history.pushState(null, "", reviewHref({
       artifactId: selectedArtifactId,
       path: selectedPath,
+      folderId,
       projectId,
       versionId: selectedVersionId,
       view: null,
     }));
     setFocusCommentsOpen(false);
-    setFocusControlsCollapsed(false);
+    setFocusHint(false);
     setFocusMode(false);
-  }, [projectId, selectedArtifactId, selectedPath, selectedVersionId]);
+  }, [folderId, projectId, selectedArtifactId, selectedPath, selectedVersionId]);
   useEffect(() => {
     const handleReviewShortcut = (event: KeyboardEvent): void => {
-      if (homeOpen || reviewShortcutBlocked(event)) return;
+      if (homeOpen || keyboardDialog !== null || reviewShortcutBlocked(event)) return;
 
       const key = event.key.toLowerCase();
+      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && key === "k") {
+        event.preventDefault();
+        openKeyboardDialog("palette");
+        return;
+      }
+      if (event.metaKey || event.ctrlKey) return;
+      if (key === "?") {
+        event.preventDefault();
+        openKeyboardDialog("shortcuts");
+        return;
+      }
+      if (event.shiftKey) return;
       if (key === "escape") {
         if (focusCommentsOpen) {
           event.preventDefault();
@@ -1252,12 +1418,15 @@ function ArtifactReview({
     focusMode,
     homeOpen,
     htmlAnnotateModeActive,
+    keyboardDialog,
+    openKeyboardDialog,
     selectArtifact,
     selectedIndex,
     selectedVersionId,
   ]);
   const hideFocusControls = (event: ReactMouseEvent<HTMLButtonElement>): void => {
     previewPanelRef.current?.focus({preventScroll: true});
+    setInitialFocusCollapse(false);
     setFocusControlsHoverArmed(event.detail === 0);
     setFocusControlsCollapsed(true);
     if (event.detail === 0) {
@@ -1267,6 +1436,7 @@ function ArtifactReview({
     }
   };
   const showFocusControls = (): void => {
+    setFocusHint(false);
     setFocusControlsHoverArmed(true);
     setFocusControlsCollapsed(false);
     window.requestAnimationFrame(() => focusCommentsButtonRef.current?.focus({preventScroll: true}));
@@ -1288,6 +1458,7 @@ function ArtifactReview({
         return;
       }
       event.preventDefault();
+      setFocusHint(false);
       setFocusControlsInstant(true);
       setFocusControlsCollapsed(false);
       window.requestAnimationFrame(() => {
@@ -1321,17 +1492,17 @@ function ArtifactReview({
       data-inspector-open={inspectorOpen}
       data-panel-resizing={catalogResize.isDragging || inspectorResize.isDragging}
     >
-      <a className="as-skip-link" href="#review-preview">Skip to artifact preview</a>
+      <a className="as-skip-link" href="#review-preview">{reviewAppText.home.skipLink}</a>
 
       <Dialog.Root onOpenChange={setHomeOpen} open={homeOpen}>
         <Dialog.Portal>
           <Dialog.Backdrop className="as-home-overlay__backdrop" />
           <Dialog.Popup className="as-home-overlay">
-            <Dialog.Title className="as-visually-hidden">Artifact Server home</Dialog.Title>
+            <Dialog.Title className="as-visually-hidden">{reviewAppText.home.title}</Dialog.Title>
             <Dialog.Close
-              aria-label="Close Artifact Server home"
+              aria-label={reviewAppText.home.close}
               className="as-icon-button as-home-overlay__close"
-              title="Close Artifact Server home"
+              title={reviewAppText.home.close}
             >
               <HugeiconsIcon aria-hidden="true" icon={Cancel01Icon} strokeWidth={1.8} />
             </Dialog.Close>
@@ -1342,7 +1513,7 @@ function ArtifactReview({
                 className="as-home-overlay__animation"
               src={artifactServerAnimationUrl}
             />
-              <nav aria-label="Artifact Server resources" className="as-home-resources">
+              <nav aria-label={reviewAppText.home.resources} className="as-home-resources">
                 <a
                   className="as-home-resources__link"
                   href="https://github.com/plannotator/artifact-server"
@@ -1354,7 +1525,7 @@ function ArtifactReview({
                   </span>
                   <span className="as-home-resources__identity">
                     <strong>GitHub</strong>
-                    <span>Source and releases</span>
+                    <span>{reviewAppText.home.githubDescription}</span>
                   </span>
                   <HugeiconsIcon aria-hidden="true" icon={ExternalLinkIcon} strokeWidth={1.8} />
                 </a>
@@ -1368,8 +1539,8 @@ function ArtifactReview({
                     <HugeiconsIcon aria-hidden="true" icon={Home01Icon} strokeWidth={1.8} />
                   </span>
                   <span className="as-home-resources__identity">
-                    <strong>Homepage</strong>
-                    <span>Product overview</span>
+                    <strong>{reviewAppText.home.homepage}</strong>
+                    <span>{reviewAppText.home.homepageDescription}</span>
                   </span>
                   <HugeiconsIcon aria-hidden="true" icon={ExternalLinkIcon} strokeWidth={1.8} />
                 </a>
@@ -1383,8 +1554,8 @@ function ArtifactReview({
                     <HugeiconsIcon aria-hidden="true" icon={BookOpen01Icon} strokeWidth={1.8} />
                   </span>
                   <span className="as-home-resources__identity">
-                    <strong>Docs</strong>
-                    <span>Install and deploy</span>
+                    <strong>{reviewAppText.home.docs}</strong>
+                    <span>{reviewAppText.home.docsDescription}</span>
                   </span>
                   <HugeiconsIcon aria-hidden="true" icon={ExternalLinkIcon} strokeWidth={1.8} />
                 </a>
@@ -1402,8 +1573,8 @@ function ArtifactReview({
                     <AgentLogos />
                   </span>
                   <span className="as-home-resources__identity">
-                    <strong>Connect agents</strong>
-                    <span>MCP and client setup</span>
+                    <strong>{reviewAppText.home.connectAgents}</strong>
+                    <span>{reviewAppText.home.connectAgentsDescription}</span>
                   </span>
                   <HugeiconsIcon aria-hidden="true" icon={ExternalLinkIcon} strokeWidth={1.8} />
                 </a>
@@ -1413,6 +1584,32 @@ function ArtifactReview({
         </Dialog.Portal>
       </Dialog.Root>
 
+      {folderDialog === null ? null : (
+        <FolderDialog action={folderDialog} projectId={projectId} projectName={selectedProject?.name ?? folderText.root}
+          projects={crossProjectMove ? projects.filter(({archivedAt}) => archivedAt === null) : []}
+          onClose={() => setFolderDialog(null)} onChanged={(result) => {
+            setFolderChanges((current) => current + 1);
+            if (result?.kind === "artifact" && result.artifact.projectId !== projectId) {
+              openMovedLocation(result.artifact.projectId, result.artifact.folderId, result.artifact.id);
+              return;
+            }
+            if (result?.kind === "folder" && result.folder.projectId !== projectId) {
+              openMovedLocation(result.folder.projectId, result.folder.id, null);
+              return;
+            }
+            const artifact = result?.kind === "artifact" ? result.artifact : undefined;
+            if (artifact !== undefined && details?.artifact.id === artifact.id) {
+              updateArtifact({...details.artifact, ...artifact});
+              setActions([]);
+            }
+            if (folderDialog.kind === "delete" && folderDialog.folder.id === folderId) {
+              navigateFolder(folderDialog.folder.parentFolderId);
+            } else {
+              void loadArtifacts(null, true);
+            }
+          }} />
+      )}
+
       {!focusMode && catalogMotion.mounted ? (
         <div className="as-panel-assembly" data-side="left">
           <motion.div
@@ -1421,7 +1618,7 @@ function ArtifactReview({
             style={{width: catalogMotion.outerWidth}}
           >
             <motion.aside
-              aria-label="Artifact catalog"
+              aria-label={reviewAppText.catalog.label}
               className="as-catalog"
               style={{width: catalogMotion.width}}
             >
@@ -1446,36 +1643,63 @@ function ArtifactReview({
           </div>
           <div className="as-catalog__header-actions">
             <IconButton
-              label={theme === "moon" ? "Use light theme" : "Use dark theme"}
+              label={theme === "moon" ? reviewAppText.catalog.useLightTheme : reviewAppText.catalog.useDarkTheme}
               onClick={onThemeChange}
             >
               <HugeiconsIcon icon={theme === "moon" ? Sun03Icon : Moon02Icon} strokeWidth={1.8} />
             </IconButton>
             <a
-              aria-label="Open dashboard"
+              aria-label={reviewAppText.catalog.openDashboard}
               className="as-icon-button"
               href={selectedProject === null
                 ? dashboardPath
                 : `${dashboardPath}?${new URLSearchParams({project: selectedProject.id})}`}
-              title="Open dashboard"
+              title={reviewAppText.catalog.openDashboard}
             >
               <HugeiconsIcon icon={DashboardSquare01Icon} strokeWidth={1.8} />
             </a>
+            {session.capabilities.fileOverview ? (
+              <a
+                aria-label={filesText.open}
+                className="as-icon-button"
+                href={selectedProject === null ? filesPath : `${filesPath}?${new URLSearchParams({project: selectedProject.id})}`}
+                title={filesText.open}
+              >
+                <HugeiconsIcon icon={Folder01Icon} strokeWidth={1.8} />
+              </a>
+            ) : null}
+            {session.capabilities.trash ? (
+              <a aria-label={trashText.open} className="as-icon-button" href={trashPath} title={trashText.open}>
+                <HugeiconsIcon icon={Delete02Icon} strokeWidth={1.8} />
+              </a>
+            ) : null}
+            {session.capabilities.linkedFolders ? (
+              <a
+                aria-label={linkedFolderText.openPage}
+                className="as-icon-button"
+                href={selectedProject === null
+                  ? linkedFoldersPath
+                  : `${linkedFoldersPath}?${new URLSearchParams({project: selectedProject.id})}`}
+                title={linkedFolderText.openPage}
+              >
+                <HugeiconsIcon icon={FolderSyncIcon} strokeWidth={1.8} />
+              </a>
+            ) : null}
             <a
-              aria-label="Open settings"
+              aria-label={reviewAppText.catalog.openSettings}
               className="as-icon-button"
               href={selectedProject === null
                 ? "/review/settings/projects"
                 : `/review/settings/projects/${encodeURIComponent(selectedProject.id)}`}
-              title="Open settings"
+              title={reviewAppText.catalog.openSettings}
             >
               <HugeiconsIcon icon={Settings02Icon} strokeWidth={1.8} />
             </a>
             <IconButton
               keyShortcuts="["
-              label="Collapse artifact catalog"
+              label={reviewAppText.catalog.collapse}
               onClick={() => setCatalogOpen(false)}
-              title="Collapse artifact catalog ([)"
+              title={reviewAppText.catalog.collapseTitle}
             >
               <HugeiconsIcon icon={LayoutLeftIcon} strokeWidth={1.8} />
             </IconButton>
@@ -1485,16 +1709,16 @@ function ArtifactReview({
         <div className="as-catalog__tools">
           <div className="as-search-group">
             <label className="as-search">
-              <span className="as-visually-hidden">Search artifacts</span>
+              <span className="as-visually-hidden">{reviewAppText.catalog.searchLabel}</span>
               <HugeiconsIcon aria-hidden="true" icon={Search01Icon} strokeWidth={1.8} />
               <input
                 onChange={(event) => setQuery(event.currentTarget.value)}
-                placeholder="Search artifacts…"
+                placeholder={reviewAppText.catalog.searchPlaceholder}
                 type="search"
                 value={query}
               />
               {query === "" ? null : (
-                <button aria-label="Clear search" onClick={() => setQuery("")} type="button">
+                <button aria-label={reviewAppText.catalog.clearSearch} onClick={() => setQuery("")} type="button">
                   <HugeiconsIcon icon={Cancel01Icon} strokeWidth={1.8} />
                 </button>
               )}
@@ -1508,48 +1732,70 @@ function ArtifactReview({
                 tagFilters={catalogTagFilters}
               />
               <label>
-                <span className="as-visually-hidden">Sort artifacts</span>
+                <span className="as-visually-hidden">{reviewAppText.catalog.sortLabel}</span>
                 <select
-                  aria-label="Sort artifacts"
+                  aria-label={reviewAppText.catalog.sortLabel}
                   onChange={(event) => {
                     const value = event.currentTarget.value;
                     if (value === "comments" || value === "newest") setCatalogSort(value);
                   }}
                   value={catalogSort}
                 >
-                  <option value="newest">Newest first</option>
-                  <option value="comments">Most comments</option>
+                  <option value="newest">{reviewAppText.catalog.newestFirst}</option>
+                  <option value="comments">{reviewAppText.catalog.mostComments}</option>
                 </select>
               </label>
             </div>
           </div>
         </div>
 
+        {foldersAvailable ? (
+          <div className="as-folder-toolbar">
+            {folderId !== null && listError !== null ? (
+              <button className="as-button as-button--ghost" type="button" onClick={() => navigateFolder(null)}>{folderText.root}</button>
+            ) : <FolderBreadcrumbs root={folderText.root} folders={breadcrumbs} onNavigate={navigateFolder} />}
+            {canManageArtifacts && !listLoading && listError === null ? (
+              <div className="as-inspector-actions">
+                <button className="as-button as-button--secondary" type="button"
+                  onClick={() => setFolderDialog({kind: "create", parent: folderId})}>{folderText.newFolder}</button>
+                <CurrentFolderActions folder={breadcrumbs.at(-1)} onAction={setFolderDialog} />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <div className="as-catalog__list">
           {listError === null ? null : (
-            <InlineState description={listError.message} title="Catalog unavailable" tone="error" />
+            <InlineState description={displayError(listError)} title={reviewAppText.catalog.unavailableTitle} tone="error" />
           )}
           {listLoading && items.length === 0 ? (
-            <InlineState description="Reading this project." title="Loading artifacts" />
+            <InlineState description={reviewAppText.catalog.loadingDescription} title={reviewAppText.catalog.loadingTitle} />
           ) : null}
-          {!listLoading && listError === null && catalogItems.length === 0 ? (
+          {folders.map(({id, name}) => (
+            <button className="as-artifact-card as-folder-row" key={id} type="button" onClick={() => navigateFolder(id)}>
+              <HugeiconsIcon aria-hidden="true" icon={Folder01Icon} size={16} />
+              <span className="as-artifact-card__name">{name}</span>
+              <span aria-hidden="true">›</span>
+            </button>
+          ))}
+          {!listLoading && listError === null && catalogItems.length === 0 && folders.length === 0 ? (
             <InlineState
               description={
                 query !== "" || catalogCommentFilter !== "all" || catalogTagFilters.length > 0
-                  ? "Try clearing a filter or using a wider search."
-                  : "Publish from the CLI to populate this project."
+                  ? reviewAppText.catalog.noMatchDescription
+                  : folderId === null ? reviewAppText.catalog.emptyDescription : folderText.emptyDescription
               }
               title={
                 query !== "" || catalogCommentFilter !== "all" || catalogTagFilters.length > 0
-                  ? "No matching artifacts"
-                  : "No artifacts yet"
+                  ? reviewAppText.catalog.noMatchTitle
+                  : folderId === null ? reviewAppText.catalog.emptyTitle : folderText.empty
               }
             />
           ) : null}
           {catalogItems.map(({artifact, commentCount, versionCount}) => {
-            const displayedCommentCount = artifact.id === selectedArtifactId && !comments.loading
-              ? comments.threads.length
-              : commentCount;
+            const openCount = catalogOpenCounts.get(artifact.id) ?? 0;
+            const timestamp = artifact.createdAt;
+            const now = Date.now();
+            const relative = Date.parse(timestamp) <= now ? formatRelativeTime(timestamp, now) : timestamp;
             return (
               <button
                 aria-current={artifact.id === selectedArtifactId ? "true" : undefined}
@@ -1560,21 +1806,26 @@ function ArtifactReview({
                 type="button"
               >
                 <span className="as-artifact-card__title-row">
-                  <strong>{artifact.name}</strong>
-                  <AccessPill access={artifact.accessSetting} />
+                  <span className="as-artifact-card__name">{visibleArtifactName(artifact.name)}</span>
+                  {artifact.accessSetting === "account_required" ? null : <AccessPill access={artifact.accessSetting} />}
                 </span>
                 <span className="as-artifact-card__meta">
                   <span className="as-artifact-card__history">
-                    <time dateTime={artifact.createdAt}>{formatTimestamp(artifact.createdAt)}</time>
-                    <span aria-hidden="true">·</span>
-                    <span>{versionCount} version{versionCount === 1 ? "" : "s"}</span>
+                    <span>{reviewAppText.catalog.versionCount(versionCount)}</span>
+                    <time aria-label={timestamp} dateTime={timestamp} title={timestamp}>{relative}</time>
                   </span>
-                  <span className="as-artifact-card__counts">
-                    <span>
-                      <HugeiconsIcon aria-hidden="true" icon={Comment01Icon} strokeWidth={1.8} />
-                      {displayedCommentCount} comment{displayedCommentCount === 1 ? "" : "s"}
+                  {foldersAvailable && duplicateNames.has(artifact.name)
+                    ? <span title={artifact.id}>{folderText.kinds[artifact.fileKind ?? "other"]} · {compactId(artifact.id.slice(4))}</span>
+                    : null}
+                  {openCount === 0 && commentCount === 0 ? null : (
+                    <span className="as-artifact-card__counts">
+                      <span aria-label={openCount > 0 ? refinementText.openThreads(openCount) : undefined}
+                        data-open-count={openCount > 0 ? openCount : undefined}>
+                        <HugeiconsIcon aria-hidden="true" icon={Comment01Icon} strokeWidth={1.8} />
+                        {openCount > 0 ? openCount : reviewAppText.catalog.commentCount(commentCount)}
+                      </span>
                     </span>
-                  </span>
+                  )}
                 </span>
               </button>
             );
@@ -1584,12 +1835,12 @@ function ArtifactReview({
         <footer className="as-app-footer as-catalog__footer">
           <button
             aria-busy={catalogRefreshState === "loading"}
-            aria-label="Refresh artifacts published by agents, the CLI, or other sessions"
+            aria-label={reviewAppText.catalog.refreshLabel}
             className="as-catalog-refresh"
             data-state={catalogRefreshState}
             disabled={listLoading}
             onClick={() => void refreshArtifacts()}
-            title="Refresh artifacts published by agents, the CLI, or other sessions"
+            title={reviewAppText.catalog.refreshLabel}
             type="button"
           >
             <HugeiconsIcon
@@ -1600,33 +1851,37 @@ function ArtifactReview({
             />
             <span>
               {catalogRefreshState === "loading"
-                ? "Refreshing…"
+                ? reviewAppText.catalog.refreshing
                 : catalogRefreshState === "complete"
-                  ? "Refreshed"
-                  : "Refresh"}
+                  ? reviewAppText.catalog.refreshed
+                  : reviewAppText.catalog.refresh}
             </span>
           </button>
           <span aria-live="polite" className="as-visually-hidden">
             {catalogRefreshState === "loading"
-              ? "Refreshing artifact catalog."
+              ? reviewAppText.catalog.refreshingAnnouncement
               : catalogRefreshState === "complete"
-                ? "Artifact catalog refreshed."
+                ? reviewAppText.catalog.refreshedAnnouncement
                 : ""}
           </span>
           <div className="as-catalog__footer-actions">
             {nextCursor === null ? null : (
               <button disabled={listLoading} onClick={() => void loadArtifacts(nextCursor, false)} type="button">
-                {listLoading ? "Loading…" : "Load more"}
+                {listLoading ? reviewAppText.general.loading : reviewAppText.general.loadMore}
               </button>
             )}
-            <ReviewKeyboardShortcuts />
+            <button aria-label={reviewAppText.shortcuts.title} aria-keyshortcuts="?"
+              className="as-keyboard-shortcuts__trigger" onClick={() => openKeyboardDialog("shortcuts")}
+              title={reviewAppText.shortcuts.title} type="button">
+              <HugeiconsIcon aria-hidden="true" icon={KeyboardIcon} strokeWidth={1.8} />
+            </button>
           </div>
         </footer>
             </motion.aside>
           </motion.div>
           {catalogOpen ? (
             <ReviewPanelEdge
-              label="Artifact catalog width"
+              label={reviewAppText.catalog.widthLabel}
               onCollapse={() => setCatalogOpen(false)}
               resize={catalogResize}
               side="left"
@@ -1647,6 +1902,7 @@ function ArtifactReview({
               <div
                 className="as-focus-controls-dock"
                 data-collapsed={focusControlsCollapsed}
+                data-initial-collapse={initialFocusCollapse}
                 data-comments-open={focusCommentsOpen}
                 data-hover-armed={focusControlsHoverArmed}
                 data-instant={focusControlsInstant}
@@ -1655,24 +1911,24 @@ function ArtifactReview({
                 <span aria-hidden="true" className="as-focus-controls__hover-zone" />
                 <div
                   aria-hidden={focusControlsCollapsed}
-                  aria-label="Artifact viewer controls"
+                  aria-label={reviewAppText.focus.toolbarLabel}
                   className="as-focus-controls"
                   inert={focusControlsCollapsed}
                   role="toolbar"
                 >
-                  {previewKind === "html" && canComment ? (
+                  {previewAnnotatable && canComment ? (
                     <button
                       aria-pressed={htmlAnnotateModeActive}
                       className="as-button as-focus-controls__button"
                       data-active={htmlAnnotateModeActive}
                       onClick={() => setHtmlAnnotateModeActive((active) => !active)}
                       title={htmlAnnotateModeActive
-                        ? "Annotate mode: click an element or select text to comment. Press Escape to interact."
-                        : "Interact mode: links and controls work normally. Select text or turn annotation mode back on to comment."}
+                        ? reviewAppText.focus.annotateModeDescription
+                        : reviewAppText.focus.interactModeDescription}
                       type="button"
                     >
                       <HugeiconsIcon aria-hidden="true" icon={Edit02Icon} strokeWidth={1.8} />
-                      {htmlAnnotateModeActive ? "Annotate mode" : "Interact mode"}
+                      {htmlAnnotateModeActive ? reviewAppText.focus.annotateMode : reviewAppText.focus.interactMode}
                     </button>
                   ) : null}
                   <button
@@ -1683,11 +1939,11 @@ function ArtifactReview({
                     data-active={focusCommentsOpen}
                     onClick={() => setFocusCommentsOpen((current) => !current)}
                     ref={focusCommentsButtonRef}
-                    title="Toggle comments (])"
+                    title={reviewAppText.focus.toggleCommentsTitle}
                     type="button"
                   >
                     <HugeiconsIcon aria-hidden="true" icon={Comment01Icon} strokeWidth={1.8} />
-                    Comments
+                    {reviewAppText.focus.comments}
                     <span className="as-focus-controls__count">{openCommentCount}</span>
                   </button>
                   <ReviewShareControl
@@ -1706,17 +1962,17 @@ function ArtifactReview({
                     aria-keyshortcuts="F"
                     className="as-button as-focus-controls__button"
                     onClick={exitFocusMode}
-                    title="Exit full screen (F)"
+                    title={reviewAppText.focus.exitFullScreenTitle}
                     type="button"
                   >
                     <HugeiconsIcon aria-hidden="true" icon={ArrowShrinkIcon} strokeWidth={1.8} />
-                    Exit full screen
+                    {reviewAppText.focus.exitFullScreen}
                   </button>
                   <button
-                    aria-label="Hide viewer controls"
+                    aria-label={reviewAppText.focus.hideControls}
                     className="as-icon-button as-focus-controls__collapse"
                     onClick={hideFocusControls}
-                    title="Hide viewer controls"
+                    title={reviewAppText.focus.hideControls}
                     type="button"
                   >
                     <HugeiconsIcon aria-hidden="true" icon={ArrowRight01Icon} strokeWidth={1.8} />
@@ -1725,16 +1981,18 @@ function ArtifactReview({
                 <button
                   aria-hidden={!focusControlsCollapsed}
                   aria-keyshortcuts="Meta+\\ Control+\\"
-                  aria-label="Show viewer controls"
+                  aria-label={refinementText.focusRestore(reviewAppText.focus.showControls, openCommentCount)}
                   className="as-focus-controls__restore"
                   onClick={showFocusControls}
                   ref={focusControlsRestoreRef}
                   tabIndex={focusControlsCollapsed ? 0 : -1}
-                  title="Show viewer controls (Command/Control + \\)"
+                  title={reviewAppText.focus.showControlsTitle}
                   type="button"
                 >
                   <HugeiconsIcon aria-hidden="true" icon={ArrowLeft01Icon} strokeWidth={1.8} />
+                  <span className="as-focus-controls__count">{openCommentCount}</span>
                 </button>
+                {focusHint && focusControlsCollapsed ? <p className="as-focus-controls__hint">{refinementText.focusHint}</p> : null}
               </div>
               <aside
                 aria-hidden={!focusCommentsOpen}
@@ -1747,14 +2005,14 @@ function ArtifactReview({
                 <header className="as-focus-comments__header">
                   <div>
                     <HugeiconsIcon aria-hidden="true" icon={Comment01Icon} strokeWidth={1.8} />
-                    <h2 id="review-focus-comments-title">Comments</h2>
+                    <h2 id="review-focus-comments-title">{reviewAppText.focus.comments}</h2>
                     <span>{openCommentCount}</span>
                   </div>
                   <IconButton
                     keyShortcuts="] Escape"
-                    label="Close comments"
+                    label={reviewAppText.focus.closeComments}
                     onClick={() => setFocusCommentsOpen(false)}
-                    title="Close comments (] or Esc)"
+                    title={reviewAppText.focus.closeCommentsTitle}
                   >
                     <HugeiconsIcon icon={Cancel01Icon} strokeWidth={1.8} />
                   </IconButton>
@@ -1763,6 +2021,9 @@ function ArtifactReview({
                   <ReviewCommentsInspector
                     canComment={canComment}
                     canDeleteAny={canDeleteAnyComment}
+                    linkedThreadId={linkedThreadId}
+                    onSendRequestHandled={() => setSendRequested(false)}
+                    sendRequested={sendRequested && focusCommentsOpen}
                     principalId={session.principal.id}
                     ref={commentsInspectorRef}
                     session={comments}
@@ -1777,37 +2038,49 @@ function ArtifactReview({
               {!catalogOpen ? (
                 <IconButton
                   keyShortcuts="["
-                  label="Open artifact catalog"
+                  label={reviewAppText.preview.openCatalog}
                   onClick={() => setCatalogOpen(true)}
-                  title="Open artifact catalog ([)"
+                  title={reviewAppText.preview.openCatalogTitle}
                 >
                   <HugeiconsIcon icon={LayoutLeftIcon} strokeWidth={1.8} />
                 </IconButton>
               ) : null}
-              <h1>{details?.artifact.name ?? selectedItem?.artifact.name ?? "Artifact Server"}</h1>
+              <h1>{visibleArtifactName(details?.artifact.name ?? selectedItem?.artifact.name ?? "Artifact Server")}</h1>
+              {selectedVersion === null ? null : (
+                <span className="as-preview-header__version">v{selectedVersion.version.number}</span>
+              )}
             </div>
             <div className="as-preview-header__actions">
-              {previewKind === "html" && canComment ? (
-                <IconButton
-                  active={htmlAnnotateModeActive}
-                  label={htmlAnnotateModeActive
-                    ? "Annotate mode: click an element or select text to comment. Press Escape to interact."
-                    : "Interact mode: links and controls work normally. Select text or turn annotation mode back on to comment."}
+              {previewAnnotatable && canComment ? (
+                <button
+                  aria-label={htmlAnnotateModeActive
+                    ? reviewAppText.focus.annotateModeDescription
+                    : reviewAppText.focus.interactModeDescription}
+                  aria-pressed={htmlAnnotateModeActive}
+                  className="as-button as-button--ghost"
+                  data-active={htmlAnnotateModeActive}
                   onClick={() => setHtmlAnnotateModeActive((active) => !active)}
+                  title={htmlAnnotateModeActive
+                    ? reviewAppText.focus.annotateModeDescription
+                    : reviewAppText.focus.interactModeDescription}
+                  type="button"
                 >
-                  <HugeiconsIcon icon={Edit02Icon} strokeWidth={1.8} />
-                </IconButton>
+                  <HugeiconsIcon aria-hidden="true" icon={Edit02Icon} strokeWidth={1.8} />
+                  <span className="as-button__label">
+                    {htmlAnnotateModeActive ? reviewAppText.focus.annotateMode : reviewAppText.focus.interactMode}
+                  </span>
+                </button>
               ) : null}
               <button
-                aria-label={opening ? "Opening raw artifact" : "Open raw artifact"}
-                className="as-button as-button--secondary as-preview-header__raw"
+                aria-label={opening ? reviewAppText.preview.openingRaw : reviewAppText.preview.openRaw}
+                className="as-button as-button--ghost as-preview-header__raw"
                 disabled={selectedVersionId === null || opening}
                 onClick={() => void openRawArtifact()}
                 type="button"
               >
                 <HugeiconsIcon aria-hidden="true" icon={ExternalLinkIcon} strokeWidth={1.8} />
                 <span className="as-button__label">
-                  {opening ? "Opening…" : "Open raw artifact"}
+                  {opening ? reviewAppText.preview.opening : reviewAppText.preview.openRaw}
                 </span>
               </button>
               <ReviewShareControl
@@ -1816,30 +2089,30 @@ function ArtifactReview({
                 onArtifactChanged={updateArtifact}
                 selectedPath={selectedPath}
                 selectedVersion={selectedVersion}
-                triggerClassName="as-button as-button--secondary"
+                triggerClassName="as-button as-button--ghost"
               />
               <ReviewDownloadControl
-                className="as-button as-button--secondary"
+                className="as-button as-button--ghost"
                 download={download}
               />
               <button
-                aria-label="Full screen"
+                aria-label={reviewAppText.preview.fullScreen}
                 aria-keyshortcuts="F"
-                className="as-button as-button--primary"
+                className="as-button as-button--ghost"
                 disabled={selectedVersionId === null}
                 onClick={enterFocusMode}
-                title="Full screen (F)"
+                title={reviewAppText.preview.fullScreenTitle}
                 type="button"
               >
                 <HugeiconsIcon aria-hidden="true" icon={FullScreenIcon} strokeWidth={1.8} />
-                <span className="as-button__label">Full screen</span>
+                <span className="as-button__label">{reviewAppText.preview.fullScreen}</span>
               </button>
               {!inspectorOpen ? (
                 <IconButton
                   keyShortcuts="]"
-                  label="Open inspector"
+                  label={reviewAppText.preview.openInspector}
                   onClick={() => setInspectorOpen(true)}
-                  title="Open inspector (])"
+                  title={reviewAppText.preview.openInspectorTitle}
                 >
                   <HugeiconsIcon icon={PanelRightIcon} strokeWidth={1.8} />
                 </IconButton>
@@ -1849,23 +2122,26 @@ function ArtifactReview({
 
           <div className="as-preview-panel__body" data-preview-kind={previewKind}>
             {detailError === null ? null : (
-              <div className="as-preview-error" role="alert">{detailError.message}</div>
+              <div className="as-preview-error" role="alert">{displayError(detailError)}</div>
             )}
-            {selectedArtifactId === null ? (
+            {!focusMode && inspectorTab === "compare" && comparison !== null && sideBySide
+              && comparison.from.artifactId === selectedArtifactId ? (
+              <ComparisonPreview comparison={comparison} isLight={theme === "dawn"} key={`${comparison.from.id}:${comparison.to.id}`} />
+            ) : selectedArtifactId === null ? (
               <PreviewWelcome />
             ) : detailLoading && details === null ? (
-              <PreviewWelcome description="Loading artifact metadata and immutable history." title="Reading artifact" />
+              <PreviewWelcome description={reviewAppText.preview.readingDescription} title={reviewAppText.preview.readingTitle} />
             ) : detailError !== null && selectedVersion === null ? (
               <PreviewWelcome
-                description="The project, artifact, or version named by this Review URL is unavailable."
-                title="Review target unavailable"
+                description={reviewAppText.preview.targetUnavailableDescription}
+                title={reviewAppText.preview.targetUnavailableTitle}
               />
             ) : (
               <ReviewPreview
                 annotateModeActive={htmlAnnotateModeActive}
                 annotations={comments.annotations}
                 artifactId={selectedArtifactId}
-                artifactName={details?.artifact.name ?? selectedItem?.artifact.name ?? "Artifact"}
+                artifactName={visibleArtifactName(details?.artifact.name ?? selectedItem?.artifact.name ?? "Artifact")}
                 isLight={theme === "dawn"}
                 onOpenRawArtifact={() => void openRawArtifact()}
                 onAnnotateModeChange={setHtmlAnnotateModeActive}
@@ -1904,6 +2180,7 @@ function ArtifactReview({
                 opening={opening}
                 projectId={projectId}
                 readOnly={!canComment}
+                selectionAttempt={comments.selectionAttempt}
                 selectedThreadId={comments.selectedThreadId}
                 selectedPath={selectedPath}
                 version={selectedVersion}
@@ -1916,14 +2193,14 @@ function ArtifactReview({
               <IconButton
                 disabled={selectedIndex <= 0}
                 keyShortcuts="K ArrowUp"
-                label="Previous artifact"
+                label={reviewAppText.footer.previousArtifact}
                 onClick={() => {
                   const previous = catalogItems[selectedIndex - 1];
                   if (previous !== undefined) {
                     selectArtifact(previous.artifact.id, previous.artifact.currentVersionId);
                   }
                 }}
-                title="Previous artifact (K or ↑)"
+                title={reviewAppText.footer.previousArtifactTitle}
               >
                 <HugeiconsIcon icon={ArrowLeft01Icon} strokeWidth={1.8} />
               </IconButton>
@@ -1933,14 +2210,14 @@ function ArtifactReview({
               <IconButton
                 disabled={selectedIndex < 0 || selectedIndex >= catalogItems.length - 1}
                 keyShortcuts="J ArrowDown"
-                label="Next artifact"
+                label={reviewAppText.footer.nextArtifact}
                 onClick={() => {
                   const next = catalogItems[selectedIndex + 1];
                   if (next !== undefined) {
                     selectArtifact(next.artifact.id, next.artifact.currentVersionId);
                   }
                 }}
-                title="Next artifact (J or ↓)"
+                title={reviewAppText.footer.nextArtifactTitle}
               >
                 <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={1.8} />
               </IconButton>
@@ -1948,8 +2225,11 @@ function ArtifactReview({
             <div className="as-preview-footer__status">
               <span className="as-preview-footer__metadata">
                 {selectedVersion === null
-                  ? "No version selected"
-                  : `${selectedVersion.manifest.entries.length} file${selectedVersion.manifest.entries.length === 1 ? "" : "s"} · ${selectedVersion.version.routingMode.toUpperCase()}`}
+                  ? reviewAppText.footer.noVersion
+                  : reviewAppText.footer.versionSummary(
+                    selectedVersion.manifest.entries.length,
+                    selectedVersion.version.routingMode.toUpperCase(),
+                  )}
               </span>
               <button
                 className="as-button as-preview-footer__reload"
@@ -1960,7 +2240,7 @@ function ArtifactReview({
                 type="button"
               >
                 <HugeiconsIcon aria-hidden="true" icon={RefreshIcon} strokeWidth={1.8} />
-                {comments.loading ? "Loading…" : "Reload"}
+                {comments.loading ? reviewAppText.general.loading : reviewAppText.footer.reload}
               </button>
             </div>
           </footer>
@@ -1970,7 +2250,7 @@ function ArtifactReview({
           <div className="as-panel-assembly" data-side="right">
             {inspectorOpen ? (
               <ReviewPanelEdge
-                label="Artifact inspector width"
+                label={reviewAppText.inspector.widthLabel}
                 onCollapse={() => setInspectorOpen(false)}
                 resize={inspectorResize}
                 side="right"
@@ -1982,26 +2262,26 @@ function ArtifactReview({
               style={{width: inspectorMotion.outerWidth}}
             >
               <motion.aside
-                aria-label="Artifact inspector"
+                aria-label={reviewAppText.inspector.label}
                 className="as-inspector"
                 style={{width: inspectorMotion.width}}
               >
           <header className="as-pane-header as-inspector__header">
-            <div aria-label="Artifact inspector" className="as-tabs" role="tablist">
-              <InspectorTabButton active={inspectorTab === "comments"} count={openCommentCount} label="Comments" onClick={() => setInspectorTab("comments")} tab="comments" />
-              <InspectorTabButton active={inspectorTab === "details"} label="Details" onClick={() => setInspectorTab("details")} tab="details" />
-              <InspectorTabButton active={inspectorTab === "files"} count={selectedVersion?.manifest.entries.length ?? 0} label="Files" onClick={() => setInspectorTab("files")} tab="files" />
-              <InspectorTabButton active={inspectorTab === "versions"} count={versions.length} label="Versions" onClick={() => setInspectorTab("versions")} tab="versions" />
-              <InspectorTabButton active={inspectorTab === "activity"} label="Activity" onClick={() => setInspectorTab("activity")} tab="activity" />
+            <div aria-label={reviewAppText.inspector.label} className="as-tabs" role="tablist">
+              <InspectorTabButton active={inspectorTab === "comments"} count={openCommentCount} label={reviewAppText.inspector.commentsTab} onClick={() => setInspectorTab("comments")} tab="comments" />
+              <InspectorTabButton active={inspectorTab === "details"} label={reviewAppText.inspector.detailsTab} onClick={() => setInspectorTab("details")} tab="details" />
+              <InspectorTabButton active={inspectorTab === "files"} count={selectedVersion?.manifest.entries.length ?? 0} label={reviewAppText.inspector.filesTab} onClick={() => setInspectorTab("files")} tab="files" />
+              <InspectorTabButton active={inspectorTab === "versions"} count={versions.length} label={reviewAppText.inspector.versionsTab} onClick={() => setInspectorTab("versions")} tab="versions" />
+              <InspectorTabButton active={inspectorTab === "activity"} label={reviewAppText.inspector.activityTab} onClick={() => setInspectorTab("activity")} tab="activity" />
               {comparison === null ? null : (
-                <InspectorTabButton active={inspectorTab === "compare"} label="Compare" onClick={() => setInspectorTab("compare")} tab="compare" />
+                <InspectorTabButton active={inspectorTab === "compare"} label={reviewAppText.inspector.compareTab} onClick={() => setInspectorTab("compare")} tab="compare" />
               )}
             </div>
             <IconButton
               keyShortcuts="]"
-              label="Close inspector"
+              label={reviewAppText.inspector.close}
               onClick={() => setInspectorOpen(false)}
-              title="Close inspector (])"
+              title={reviewAppText.inspector.closeTitle}
             >
               <HugeiconsIcon icon={Cancel01Icon} strokeWidth={1.8} />
             </IconButton>
@@ -2013,12 +2293,31 @@ function ArtifactReview({
             role="tabpanel"
           >
             {details === null || selectedVersion === null ? (
-              <InlineState description="Select an artifact to inspect its immutable record." title="Nothing selected" />
+              <InlineState description={reviewAppText.inspector.nothingDescription} title={reviewAppText.inspector.nothingTitle} />
             ) : inspectorTab === "details" ? (
               <DetailsInspector
                 canManage={canManageArtifacts}
                 details={details}
                 linkedArtifacts={session.capabilities.linkedArtifacts}
+                trashAvailable={session.capabilities.trash}
+                placement={foldersAvailable ? (
+                  <ArtifactFolderLocation artifact={details.artifact}
+                    key={`${details.artifact.id}:${details.artifact.folderId ?? "root"}:${folderChanges}`}
+                    projectName={selectedProject?.name ?? folderText.root}>
+                    {canManageArtifacts ? (
+                      <>
+                        <button className="as-button" type="button" onClick={() =>
+                          setFolderDialog({kind: "move", subject: {kind: "artifact", record: details.artifact}})}>
+                          {folderText.move}
+                        </button>
+                        <button className="as-button" type="button" onClick={() =>
+                          setFolderDialog({kind: "rename", subject: {kind: "artifact", record: details.artifact}})}>
+                          {folderText.rename}
+                        </button>
+                      </>
+                    ) : null}
+                  </ArtifactFolderLocation>
+                ) : null}
                 onCapture={captureLinkedArtifact}
                 onOpenLive={openLinkedArtifact}
                 onTagsChange={changeTags}
@@ -2029,8 +2328,11 @@ function ArtifactReview({
               <ReviewCommentsInspector
                 canComment={canComment}
                 canDeleteAny={canDeleteAnyComment}
+                linkedThreadId={linkedThreadId}
+                onSendRequestHandled={() => setSendRequested(false)}
                 principalId={session.principal.id}
                 ref={commentsInspectorRef}
+                sendRequested={sendRequested}
                 session={comments}
                 versionId={selectedVersionId}
               />
@@ -2064,13 +2366,59 @@ function ArtifactReview({
                 onLoadMore={() => void loadActions(actionNextCursor)}
               />
             ) : (
-              <ComparisonInspector comparison={comparison} error={comparisonError} />
+              <ComparisonInspector
+                comparison={comparison}
+                error={comparisonError}
+                onViewChange={setSideBySide}
+                sideBySide={sideBySide}
+              />
             )}
           </div>
               </motion.aside>
             </motion.div>
           </div>
         ) : null}
+        {keyboardDialog === null ? null : (
+          <ReviewKeyboardDialog
+            close={() => setKeyboardDialog(null)}
+            restoreFocus={keyboardReturnFocus.current}
+            title={keyboardDialog === "palette" ? refinementText.palette.title : reviewAppText.shortcuts.title}
+          >
+            {keyboardDialog === "shortcuts" ? <ReviewKeyboardShortcuts /> : (
+              <ReviewCommandPalette
+                commands={[
+                  {label: refinementText.palette.switchVersion, run: () => {
+                    exitFocusMode();
+                    setInspectorOpen(true);
+                    setInspectorTab("versions");
+                  }},
+                  {label: refinementText.palette.annotate, run: () => setHtmlAnnotateModeActive(true)},
+                  {label: refinementText.palette.send, run: () => {
+                    if (focusMode) setFocusCommentsOpen(true);
+                    else {
+                      setInspectorOpen(true);
+                      setInspectorTab("comments");
+                    }
+                    setSendRequested(true);
+                  }},
+                  {label: refinementText.palette.compare, run: () => {
+                    exitFocusMode();
+                    setInspectorOpen(true);
+                    setInspectorTab(comparison === null ? "versions" : "compare");
+                  }},
+                  {label: refinementText.palette.theme, run: onThemeChange},
+                ]}
+                onClose={() => setKeyboardDialog(null)}
+                onSelect={(artifactId, versionId) => {
+                  exitFocusMode();
+                  selectArtifact(artifactId, versionId);
+                }}
+                projectId={projectId}
+              />
+            )}
+          </ReviewKeyboardDialog>
+        )}
+        {trashUndo.element}
       </main>
     </div>
   );
@@ -2092,12 +2440,12 @@ function reviewDownload(
         version.version.id,
         onlyEntry.path,
       ),
-      title: `Download ${onlyEntry.path}`,
+      title: reviewAppText.download.file(onlyEntry.path),
     };
   }
   return {
     href: api.versionArchiveUrl(projectId, artifactId, version.version.id),
-    title: `Download ${entries.length} files as a ZIP`,
+    title: reviewAppText.download.archive(entries.length),
   };
 }
 
@@ -2110,23 +2458,47 @@ function ReviewDownloadControl({
 }) {
   if (download === null) {
     return (
-      <button aria-label="Download" className={className} disabled type="button">
+      <button aria-label={reviewAppText.download.label} className={className} disabled type="button">
         <HugeiconsIcon aria-hidden="true" icon={Download04Icon} strokeWidth={1.8} />
-        <span className="as-button__label">Download</span>
+        <span className="as-button__label">{reviewAppText.download.label}</span>
       </button>
     );
   }
   return (
     <a
-      aria-label="Download"
+      aria-label={reviewAppText.download.label}
       className={className}
       download
       href={download.href}
       title={download.title}
     >
       <HugeiconsIcon aria-hidden="true" icon={Download04Icon} strokeWidth={1.8} />
-      <span className="as-button__label">Download</span>
+      <span className="as-button__label">{reviewAppText.download.label}</span>
     </a>
+  );
+}
+
+function CurrentFolderActions({folder, onAction}: {
+  readonly folder: Folder | undefined;
+  readonly onAction: (action: FolderDialogAction) => void;
+}) {
+  if (folder === undefined) return null;
+  return (
+    <Popover.Root>
+      <Popover.Trigger className="as-button" aria-label={folderText.folderActions(folder.name)}>…</Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Positioner sideOffset={4}>
+          <Popover.Popup className="as-folder-menu">
+            <button className="as-button as-button--ghost" type="button"
+              onClick={() => onAction({kind: "rename", subject: {kind: "folder", record: folder}})}>{folderText.rename}</button>
+            <button className="as-button as-button--ghost" type="button"
+              onClick={() => onAction({kind: "move", subject: {kind: "folder", record: folder}})}>{folderText.move}</button>
+            <button className="as-button as-button--ghost" type="button"
+              onClick={() => onAction({kind: "delete", folder})}>{folderText.delete}</button>
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
 
@@ -2138,6 +2510,8 @@ function DetailsInspector({
   onOpenLive,
   onTagsChange,
   onTombstone,
+  placement,
+  trashAvailable,
   version,
 }: {
   readonly canManage: boolean;
@@ -2147,6 +2521,8 @@ function DetailsInspector({
   readonly onOpenLive: () => Promise<void>;
   readonly onTagsChange: (tags: readonly string[]) => Promise<void>;
   readonly onTombstone: () => Promise<boolean>;
+  readonly placement?: ReactNode;
+  readonly trashAvailable: boolean;
   readonly version: ArtifactVersion;
 }) {
   const linkedDriftDescription = details.sourceBinding === undefined
@@ -2154,22 +2530,23 @@ function DetailsInspector({
     : sourceDriftDescription(details.sourceBinding.status, "captured");
   return (
     <div className="as-inspector-stack">
-      <InspectorSection count={5} title="Artifact">
-        <InspectorRow label="name" title={details.artifact.name} value={details.artifact.name} />
+      <InspectorSection count={5} title={reviewAppText.details.artifactSection}>
+        <InspectorRow label={reviewAppText.details.name} title={visibleArtifactName(details.artifact.name)} value={visibleArtifactName(details.artifact.name)} />
         <InspectorRow
-          label="access"
+          label={reviewAppText.details.access}
           value={<AccessPill access={details.artifact.accessSetting} />}
         />
-        <InspectorRow label="created" title={formatTimestamp(details.artifact.createdAt)} value={formatTimestamp(details.artifact.createdAt)} />
-        <InspectorRow label="artifact id" mono title={details.artifact.id} value={details.artifact.id} />
-        <InspectorRow label="project id" mono title={details.artifact.projectId} value={details.artifact.projectId} />
+        <InspectorRow label={reviewAppText.details.created} title={formatTimestamp(details.artifact.createdAt)} value={formatTimestamp(details.artifact.createdAt)} />
+        <InspectorRow label={reviewAppText.details.artifactId} mono title={details.artifact.id} value={details.artifact.id} />
+        <InspectorRow label={reviewAppText.details.projectId} mono title={details.artifact.projectId} value={details.artifact.projectId} />
       </InspectorSection>
-      <InspectorSection count={5} title="Version">
-        <InspectorRow label="number" title={String(version.version.number)} value={String(version.version.number)} />
-        <InspectorRow label="saved" title={formatTimestamp(version.version.createdAt)} value={formatTimestamp(version.version.createdAt)} />
-        <InspectorRow label="entry" mono title={version.manifest.entryPath} value={version.manifest.entryPath} />
-        <InspectorRow label="routing" title={version.version.routingMode} value={version.version.routingMode} />
-        <InspectorRow label="version id" mono title={version.version.id} value={version.version.id} />
+      {placement}
+      <InspectorSection count={5} title={reviewAppText.details.versionSection}>
+        <InspectorRow label={reviewAppText.details.number} title={String(version.version.number)} value={String(version.version.number)} />
+        <InspectorRow label={reviewAppText.details.saved} title={formatTimestamp(version.version.createdAt)} value={formatTimestamp(version.version.createdAt)} />
+        <InspectorRow label={reviewAppText.details.entry} mono title={version.manifest.entryPath} value={version.manifest.entryPath} />
+        <InspectorRow label={reviewAppText.details.routing} title={version.version.routingMode} value={version.version.routingMode} />
+        <InspectorRow label={reviewAppText.details.versionId} mono title={version.version.id} value={version.version.id} />
       </InspectorSection>
       <TagsInspector
         artifact={details.artifact}
@@ -2177,29 +2554,31 @@ function DetailsInspector({
         onChange={onTagsChange}
       />
       {details.sourceBinding === undefined ? null : (
-        <InspectorSection count={2} title="Linked source">
-          <InspectorRow label="state" value={sourceFreshnessLabel(details.sourceBinding.status)} />
-          <InspectorRow label="path" mono value={details.sourceBinding.path} />
+        <InspectorSection count={2} title={reviewAppText.details.linkedSourceSection}>
+          <InspectorRow label={reviewAppText.details.state} value={sourceFreshnessLabel(details.sourceBinding.status)} />
+          <InspectorRow label={reviewAppText.details.path} mono value={details.sourceBinding.path} />
           {linkedDriftDescription === null ? null : (
             <p className="as-inspector-empty">{linkedDriftDescription}</p>
           )}
           <div className="as-inspector-actions">
             {canManage && details.sourceBinding.status !== "in-sync" ? (
               <button className="as-button as-button--primary" onClick={() => void onCapture()} type="button">
-                Capture current file
+                {reviewAppText.details.captureCurrent}
               </button>
             ) : null}
             {linkedArtifacts && details.links.live !== undefined ? (
               <button className="as-button" onClick={() => void onOpenLive()} type="button">
-                Open live file
+                {reviewAppText.details.openLive}
               </button>
             ) : null}
           </div>
         </InspectorSection>
       )}
       {canManage ? (
-        <InspectorSection count={0} title="Danger zone">
-          <TombstoneArtifactControl artifact={details.artifact} onConfirm={onTombstone} />
+        <InspectorSection count={0} title={reviewAppText.details.dangerZone}>
+          {trashAvailable
+            ? <MoveToTrashButton onTrash={onTombstone} />
+            : <TombstoneArtifactControl artifact={details.artifact} onConfirm={onTombstone} />}
         </InspectorSection>
       ) : null}
     </div>
@@ -2236,7 +2615,7 @@ function TagsInspector({
       );
       setEditing(false);
     } catch (caught) {
-      setError(caught instanceof Error ? caught : new Error("Tag update failed."));
+      setError(caught instanceof Error ? caught : new Error(reviewAppText.errors.tagsFailed));
     } finally {
       setPending(false);
     }
@@ -2250,11 +2629,11 @@ function TagsInspector({
           onClick={() => setEditing(true)}
           type="button"
         >
-          Edit tags
+          {reviewAppText.tags.edit}
         </button>
       )}
       count={artifact.tags.length}
-      title="Tags"
+      title={reviewAppText.tags.title}
     >
       {editing ? (
         <form
@@ -2265,31 +2644,31 @@ function TagsInspector({
           }}
         >
           <label className="as-visually-hidden" htmlFor={`review-tags-${artifact.id}`}>
-            Tags
+            {reviewAppText.tags.title}
           </label>
           <input
             autoFocus
             disabled={pending}
             id={`review-tags-${artifact.id}`}
             onChange={(event) => setValue(event.currentTarget.value)}
-            placeholder="prototype, approved"
+            placeholder={reviewAppText.tags.placeholder}
             value={value}
           />
-          <p>Separate tags with commas. Saving replaces the complete set.</p>
+          <p>{reviewAppText.tags.hint}</p>
           {error === null ? null : (
-            <p className="as-tag-editor__error" role="alert">{error.message}</p>
+            <p className="as-tag-editor__error" role="alert">{displayError(error)}</p>
           )}
           <div className="as-tag-editor__actions">
             <button className="as-button as-button--primary" disabled={pending} type="submit">
-              {pending ? "Saving…" : "Save tags"}
+              {pending ? reviewAppText.tags.saving : reviewAppText.tags.save}
             </button>
             <button className="as-button" disabled={pending} onClick={cancel} type="button">
-              Cancel
+              {reviewAppText.general.cancel}
             </button>
           </div>
         </form>
       ) : artifact.tags.length === 0 ? (
-        <p className="as-inspector-empty">No tags on this artifact.</p>
+        <p className="as-inspector-empty">{reviewAppText.tags.empty}</p>
       ) : artifact.tags.map((tag) => (
         <span className="as-tag" key={tag}>{tag}</span>
       ))}
@@ -2308,7 +2687,7 @@ function FilesInspector({
 }) {
   return (
     <div className="as-inspector-stack">
-      <InspectorSection count={version.manifest.entries.length} title="Manifest">
+      <InspectorSection count={version.manifest.entries.length} title={reviewAppText.files.manifest}>
         <ol className="as-file-list">
           {version.manifest.entries.map((entry) => (
             <li key={entry.path}>
@@ -2362,7 +2741,7 @@ function VersionsInspector({
   return (
     <div className="as-inspector-stack">
       {versions.length < 2 ? null : (
-        <InspectorSection count={2} title="Compare versions">
+        <InspectorSection count={2} title={reviewAppText.versions.compareSection}>
           <form
             className="as-compare-form"
             onSubmit={(event) => {
@@ -2371,24 +2750,24 @@ function VersionsInspector({
             }}
           >
             <label>
-              <span>From</span>
+              <span>{reviewAppText.versions.from}</span>
               <select onChange={(event) => setFromVersionId(event.currentTarget.value)} value={fromVersionId}>
-                {versions.map(({version}) => <option key={version.id} value={version.id}>Version {version.number}</option>)}
+                {versions.map(({version}) => <option key={version.id} value={version.id}>{reviewAppText.versions.versionNumber(version.number)}</option>)}
               </select>
             </label>
             <label>
-              <span>To</span>
+              <span>{reviewAppText.versions.to}</span>
               <select onChange={(event) => setToVersionId(event.currentTarget.value)} value={toVersionId}>
-                {versions.map(({version}) => <option key={version.id} value={version.id}>Version {version.number}</option>)}
+                {versions.map(({version}) => <option key={version.id} value={version.id}>{reviewAppText.versions.versionNumber(version.number)}</option>)}
               </select>
             </label>
             <button className="as-button" disabled={comparisonLoading || fromVersionId === toVersionId} type="submit">
-              {comparisonLoading ? "Comparing…" : "Compare"}
+              {comparisonLoading ? reviewAppText.versions.comparing : reviewAppText.versions.compare}
             </button>
           </form>
         </InspectorSection>
       )}
-      <InspectorSection count={versions.length} title="Immutable history">
+      <InspectorSection count={versions.length} title={reviewAppText.versions.history}>
         <ol className="as-version-list">
           {versions.map(({version}) => (
             <li key={version.id}>
@@ -2401,11 +2780,11 @@ function VersionsInspector({
                   type="button"
                 >
                   <span>
-                    <strong>Version {version.number}</strong>
+                    <strong>{reviewAppText.versions.versionNumber(version.number)}</strong>
                     <time dateTime={version.createdAt}>{formatTimestamp(version.createdAt)}</time>
                   </span>
                   <span className="as-version-list__state">
-                    {version.id === currentVersionId ? "current" : compactId(version.id)}
+                    {version.id === currentVersionId ? reviewAppText.versions.current : compactId(version.id)}
                   </span>
                 </button>
                 {!canManage || version.id === currentVersionId ? null : (
@@ -2439,10 +2818,10 @@ function ActivityInspector({
 }) {
   return (
     <div className="as-inspector-stack">
-      <InspectorSection count={actions.length} title="Artifact activity">
-        {error === null ? null : <p className="as-inspector-error" role="alert">{error.message}</p>}
-        {actions.length === 0 && loading ? <p className="as-inspector-empty">Loading activity…</p> : null}
-        {actions.length === 0 && !loading ? <p className="as-inspector-empty">No activity recorded.</p> : null}
+      <InspectorSection count={actions.length} title={reviewAppText.activity.section}>
+        {error === null ? null : <p className="as-inspector-error" role="alert">{displayError(error)}</p>}
+        {actions.length === 0 && loading ? <p className="as-inspector-empty">{reviewAppText.activity.loading}</p> : null}
+        {actions.length === 0 && !loading ? <p className="as-inspector-empty">{reviewAppText.activity.empty}</p> : null}
         <ol className="as-activity-list">
           {actions.map((action) => (
             <li key={action.id}>
@@ -2454,7 +2833,7 @@ function ActivityInspector({
         </ol>
         {nextCursor === null ? null : (
           <button className="as-button" disabled={loading} onClick={onLoadMore} type="button">
-            {loading ? "Loading…" : "Load more"}
+            {loading ? reviewAppText.general.loading : reviewAppText.general.loadMore}
           </button>
         )}
       </InspectorSection>
@@ -2465,38 +2844,50 @@ function ActivityInspector({
 function ComparisonInspector({
   comparison,
   error,
+  onViewChange,
+  sideBySide,
 }: {
   readonly comparison: ArtifactComparison | null;
   readonly error: Error | null;
+  readonly onViewChange: (sideBySide: boolean) => void;
+  readonly sideBySide: boolean;
 }) {
-  if (error !== null) return <InlineState description={error.message} title="Comparison unavailable" />;
-  if (comparison === null) return <InlineState description="Choose two versions from Versions." title="No comparison" />;
+  if (error !== null) return <InlineState description={displayError(error)} title={reviewAppText.comparison.unavailableTitle} />;
+  if (comparison === null) return <InlineState description={reviewAppText.comparison.noneDescription} title={reviewAppText.comparison.noneTitle} />;
   const changedEntries = [
-    ...comparison.added.map((entry) => ({kind: "Added", path: entry.path})),
-    ...comparison.changed.map((entry) => ({kind: "Changed", path: entry.after.path})),
-    ...comparison.removed.map((entry) => ({kind: "Removed", path: entry.path})),
-    ...comparison.renamed.map((entry) => ({kind: "Renamed", path: `${entry.from.path} → ${entry.to.path}`})),
+    ...comparison.added.map((entry) => ({kind: reviewAppText.comparison.added, path: entry.path})),
+    ...comparison.changed.map((entry) => ({kind: reviewAppText.comparison.changed, path: entry.after.path})),
+    ...comparison.removed.map((entry) => ({kind: reviewAppText.comparison.removed, path: entry.path})),
+    ...comparison.renamed.map((entry) => ({kind: reviewAppText.comparison.renamed, path: `${entry.from.path} → ${entry.to.path}`})),
   ];
   return (
     <div className="as-inspector-stack">
-      <InspectorSection count={2} title={`Version ${comparison.from.number} → ${comparison.to.number}`}>
+      <div aria-label={refinementText.compare.label} className="as-comparison-view" role="group">
+        <button aria-pressed={!sideBySide} className="as-button" onClick={() => onViewChange(false)} type="button">
+          {refinementText.compare.files}
+        </button>
+        <button aria-pressed={sideBySide} className="as-button" onClick={() => onViewChange(true)} type="button">
+          {refinementText.compare.sideBySide}
+        </button>
+      </div>
+      <InspectorSection count={2} title={reviewAppText.comparison.title(comparison.from.number, comparison.to.number)}>
         <div className="as-comparison-summary">
-          <span>{comparison.added.length} added</span>
-          <span>{comparison.changed.length} changed</span>
-          <span>{comparison.removed.length} removed</span>
-          <span>{comparison.renamed.length} renamed</span>
-          <span>{comparison.unchangedCount} unchanged</span>
+          <span>{reviewAppText.comparison.addedCount(comparison.added.length)}</span>
+          <span>{reviewAppText.comparison.changedCount(comparison.changed.length)}</span>
+          <span>{reviewAppText.comparison.removedCount(comparison.removed.length)}</span>
+          <span>{reviewAppText.comparison.renamedCount(comparison.renamed.length)}</span>
+          <span>{reviewAppText.comparison.unchangedCount(comparison.unchangedCount)}</span>
         </div>
       </InspectorSection>
-      <InspectorSection count={changedEntries.length} title="Changed files">
-        {changedEntries.length === 0 ? <p className="as-inspector-empty">These versions have the same files.</p> : (
+      {sideBySide ? null : <InspectorSection count={changedEntries.length} title={reviewAppText.comparison.changedFiles}>
+        {changedEntries.length === 0 ? <p className="as-inspector-empty">{reviewAppText.comparison.sameFiles}</p> : (
           <ol className="as-comparison-list">
             {changedEntries.map((entry) => (
               <li key={`${entry.kind}-${entry.path}`}><span>{entry.kind}</span><code>{entry.path}</code></li>
             ))}
           </ol>
         )}
-      </InspectorSection>
+      </InspectorSection>}
     </div>
   );
 }
@@ -2523,22 +2914,22 @@ function TombstoneArtifactControl({
       setOpen(nextOpen);
       if (!nextOpen) setValue("");
     }} open={open}>
-      <Dialog.Trigger className="as-button as-button--danger">Delete artifact</Dialog.Trigger>
+      <Dialog.Trigger className="as-button as-button--danger">{reviewAppText.tombstone.trigger}</Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Backdrop className="as-confirm-dialog__backdrop" />
         <Dialog.Popup className="as-confirm-dialog">
-          <Dialog.Title>Delete {artifact.name}?</Dialog.Title>
+          <Dialog.Title>{reviewAppText.tombstone.title(visibleArtifactName(artifact.name))}</Dialog.Title>
           <Dialog.Description>
-            This removes the artifact from normal use but retains its immutable version records. Type the artifact name to confirm.
+            {reviewAppText.tombstone.description}
           </Dialog.Description>
           <label>
-            <span className="as-visually-hidden">Artifact name</span>
+            <span className="as-visually-hidden">{reviewAppText.tombstone.nameLabel}</span>
             <input autoFocus onChange={(event) => setValue(event.currentTarget.value)} value={value} />
           </label>
           <div className="as-confirm-dialog__actions">
-            <Dialog.Close className="as-button">Cancel</Dialog.Close>
+            <Dialog.Close className="as-button">{reviewAppText.general.cancel}</Dialog.Close>
             <button className="as-button as-button--danger" disabled={pending || value !== artifact.name} onClick={() => void confirm()} type="button">
-              {pending ? "Deleting…" : "Delete artifact"}
+              {pending ? reviewAppText.tombstone.deleting : reviewAppText.tombstone.trigger}
             </button>
           </div>
         </Dialog.Popup>
@@ -2570,24 +2961,24 @@ function MakeCurrentControl({
   return (
     <Dialog.Root onOpenChange={setOpen} open={open}>
       <Dialog.Trigger className="as-version-list__make-current">
-        Make current
+        {reviewAppText.makeCurrent.trigger}
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Backdrop className="as-confirm-dialog__backdrop" />
         <Dialog.Popup className="as-confirm-dialog">
-          <Dialog.Title>Make Version {version.number} current?</Dialog.Title>
+          <Dialog.Title>{reviewAppText.makeCurrent.title(version.number)}</Dialog.Title>
           <Dialog.Description>
-            The stable artifact link will point to Version {version.number}. No saved version is changed or duplicated.
+            {reviewAppText.makeCurrent.description(version.number)}
           </Dialog.Description>
           <div className="as-confirm-dialog__actions">
-            <Dialog.Close className="as-button" disabled={pending}>Cancel</Dialog.Close>
+            <Dialog.Close className="as-button" disabled={pending}>{reviewAppText.general.cancel}</Dialog.Close>
             <button
               className="as-button as-button--primary"
               disabled={pending}
               onClick={() => void confirm()}
               type="button"
             >
-              {pending ? "Making current…" : "Make current"}
+              {pending ? reviewAppText.makeCurrent.pending : reviewAppText.makeCurrent.trigger}
             </button>
           </div>
         </Dialog.Popup>
@@ -2710,14 +3101,14 @@ function IconButton({
 function AccessPill({access}: {readonly access: ArtifactDetails["artifact"]["accessSetting"]}) {
   return (
     <span className="as-pill" data-access={access}>
-      {access === "public_link" ? "public" : "private"}
+      {access === "public_link" ? reviewAppText.access.public : reviewAppText.access.private}
     </span>
   );
 }
 
 function PreviewWelcome({
-  description = "Choose an artifact from the catalog to inspect its current immutable version.",
-  title = "Select an artifact",
+  description = reviewAppText.preview.welcomeDescription,
+  title = reviewAppText.preview.welcomeTitle,
 }: {
   readonly description?: string;
   readonly title?: string;
@@ -2725,8 +3116,8 @@ function PreviewWelcome({
   return (
     <div className="as-preview-welcome">
       <span aria-hidden="true"><HugeiconsIcon icon={Link01Icon} strokeWidth={1.4} /></span>
-      <p>Immutable artifact workspace</p>
       <h2>{title}</h2>
+      <p>{reviewAppText.preview.welcomeTagline}</p>
       <small>{description}</small>
     </div>
   );
@@ -2762,19 +3153,13 @@ function ReviewGate({
     <main className="as-gate">
       <section>
         <span aria-hidden="true" className="as-gate__mark">A</span>
-        <p>Artifact Server</p>
         <h1>{title}</h1>
+        <p>Artifact Server</p>
         <small>{description}</small>
         {action}
       </section>
     </main>
   );
-}
-
-function readInitialTheme(): ReviewTheme {
-  return window.localStorage.getItem("artifact-review-theme") === "dawn"
-    ? "dawn"
-    : "moon";
 }
 
 function readInitialInspectorOpen(): boolean {
@@ -2785,8 +3170,10 @@ function readReviewLocation(): ReviewLocation {
   const search = new URLSearchParams(window.location.search);
   return {
     artifactId: search.get("artifact"),
+    folderId: search.get("folder"),
     path: search.get("path"),
     projectId: search.get("project"),
+    threadId: search.get("thread"),
     versionId: search.get("version"),
     view: search.get("view") === "focus" ? "focus" : null,
   };
@@ -2797,9 +3184,11 @@ function reviewHref(location: ReviewLocation): string {
   if (location.projectId !== null && location.projectId !== "") {
     search.set("project", location.projectId);
   }
+  if (location.folderId !== null) search.set("folder", location.folderId);
   if (location.artifactId !== null) search.set("artifact", location.artifactId);
   if (location.versionId !== null) search.set("version", location.versionId);
   if (location.path !== null) search.set("path", location.path);
+  if (location.threadId !== null && location.threadId !== undefined) search.set("thread", location.threadId);
   if (location.view !== null) search.set("view", location.view);
   return search.size === 0 ? "/review" : `/review?${search}`;
 }
@@ -2820,6 +3209,20 @@ function reviewPreviewKind(
     return "media";
   }
   return "other";
+}
+
+function reviewEntryIsMarkdown(
+  version: ArtifactVersion | null,
+  selectedPath: string | null,
+): boolean {
+  if (version === null) return false;
+  const path = selectedPath ?? version.manifest.entryPath;
+  const mediaType = version.manifest.entries
+    .find((entry) => entry.path === path)
+    ?.mediaType.split(";", 1)[0]
+    ?.trim()
+    .toLowerCase();
+  return mediaType === "text/markdown" || mediaType === "text/x-markdown";
 }
 
 function compactId(value: string): string {

@@ -1,3 +1,20 @@
+import {ArtifactPlacementService, FolderService} from "../application/folders.js";
+import {TrashService} from "../application/trash.js";
+import {FileCatalogService} from "../application/file-catalog.js";
+import {BatchService} from "../application/batch.js";
+import {
+  batchRequestSchema, batchResponse, fileListCommand, filePageResponse, parseFileQuery,
+} from "./file-catalog-protocol.js";
+import {
+  decodeTrashCursor, folderRecoverSchema, purgeSchema, trashPageQuerySchema, trashPageResponse,
+} from "./trash-protocol.js";
+import {isEntryLiveContentToken, LinkedFolderService} from "../application/linked-folders.js";
+import {registerFolderLinkRoutes} from "./folder-link-routes.js";
+import {
+  artifactMoveSchema, artifactPageItems, artifactRenameSchema, createFolderSchema,
+  decodeFolderCursor, folderContentsResponse, folderCreateKey, folderIdSchema,
+  folderLocationSchema, folderProjectMoveSchema, folderRevisionSchema, updateFolderSchema,
+} from "./folder-protocol.js";
 import {
   buildOAuthProtectedResourceMetadata,
   getOAuthProtectedResourceMetadataUrl,
@@ -5,7 +22,7 @@ import {
   type OAuthMetadata,
 } from "@modelcontextprotocol/server";
 import {Clock, Effect, Exit, Redacted, type Tracer} from "effect";
-import { type Context, Hono } from "hono";
+import { type Context, Hono, type Next } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import {routePath} from "hono/route";
@@ -372,6 +389,10 @@ const artifactPageQuerySchema = pageQuerySchema.extend({
   sort: z.enum(["comments", "newest"]).default("newest"),
   tags: z.array(z.string().max(200)).max(20).default([]),
 });
+const folderPageQuerySchema = artifactPageQuerySchema.extend({
+  cursor: z.string().max(8_192).optional(),
+  foldersOnly: z.enum(["true", "false"]).optional(),
+});
 const publicLinksPageQuerySchema = pageQuerySchema.omit({search: true});
 const insightsQuerySchema = z.object({
   window: z.enum(insightWindows).default(defaultInsightWindow),
@@ -431,6 +452,7 @@ const principalCapabilitySchema = z.enum([
   principalCapabilities.issueContentSession,
   principalCapabilities.manageAnyArtifact,
   principalCapabilities.manageProjects,
+  principalCapabilities.purgeArtifacts,
   principalCapabilities.publishAnyArtifact,
   principalCapabilities.readArtifacts,
   principalCapabilities.writeComments,
@@ -466,7 +488,8 @@ const maximumClaimWaitSeconds = 25;
 /** Spacing of the bounded re-checks inside one held claim poll. */
 const claimRecheckIntervalMilliseconds = 1_000;
 
-interface HttpEnvironment {
+/** Values the authenticated request pipeline attaches to every request. */
+export interface HttpEnvironment {
   readonly Variables: {
     readonly authenticationMethod: "bearer" | "session";
     readonly principal: Principal;
@@ -495,6 +518,10 @@ export interface HttpAppDependencies {
    * the enforcing guard; this flag only shapes discovery and fast gating.
    */
   readonly linkedArtifacts?: boolean;
+  readonly linkedFolders?: boolean;
+  readonly folders?: boolean;
+  /** Advertises recoverable trash, recover, and purge (ADR 0030). */
+  readonly trash?: boolean;
   readonly mcpOAuthResource?: McpOAuthResourceConfiguration;
   readonly readiness?: ReadinessProbe;
   readonly runtimeLifecycle?: RuntimeLifecycle;
@@ -564,6 +591,9 @@ export function createHttpApp(
     contentDomain: dependencies.contentDomain,
     gitHistory,
     linkedArtifacts: dependencies.linkedArtifacts === true,
+    linkedFolders: dependencies.linkedFolders === true,
+    folders: dependencies.folders === true,
+    trash: dependencies.trash === true,
     mode: dependencies.trustedApplicationOrigin === null ? "local" : "remote",
     oauthResource: dependencies.mcpOAuthResource?.resource ?? null,
   });
@@ -713,6 +743,9 @@ export function createHttpApp(
           contentToken,
           dependencies,
         );
+      }
+      if (isEntryLiveContentToken(contentToken)) {
+        return serveEntryLiveContent(context, requestUrl, contentToken, dependencies);
       }
       if (isContentBootstrapRequest(requestUrl)) {
         return exchangeContentBootstrap(
@@ -1028,6 +1061,12 @@ export function createHttpApp(
       capabilities: {
         gitHistory: gitHistory.read(),
         linkedArtifacts: dependencies.linkedArtifacts === true,
+        linkedFolders: dependencies.linkedFolders === true,
+        folders: dependencies.folders === true,
+        crossProjectMove: dependencies.folders === true,
+        trash: dependencies.trash === true,
+        fileOverview: dependencies.folders === true,
+        batch: dependencies.folders === true,
       },
       principal: context.get("principal"),
     }));
@@ -1618,6 +1657,218 @@ export function createHttpApp(
     });
   });
 
+  const folderCollection = "/api/v1/projects/:projectId/folders";
+  const folderRoute = `${folderCollection}/:folderId` as const;
+  const placementUnavailable = (context: Context<HttpEnvironment>, next: Next) =>
+    dependencies.folders === true ? next() : context.json({
+      error: {code: errorCodes.capabilityUnavailable, message: "Folders and in-project placement are unavailable on this deployment."},
+    }, 501);
+  const folderWriteContext = (context: Context<HttpEnvironment>, id?: string) => ({
+    principal: context.get("principal"),
+    projectId: projectIdSchema.parse(context.req.param("projectId")),
+    idempotencyKey: folderCreateKey(id, context.req.header("idempotency-key")),
+  });
+
+  app.get(folderRoute, placementUnavailable, async (context) => {
+    const query = folderPageQuerySchema.parse({
+      ...context.req.query(),
+      tags: context.req.queries("tag") ?? [],
+    });
+    const page = await runHttpApplicationEffect(context, dependencies, FolderService.use(
+      (service) => service.list({
+        comments: query.comments,
+        cursor: decodeFolderCursor(query.cursor ?? null),
+        folderId: folderLocationSchema.parse(context.req.param("folderId")),
+        foldersOnly: query.foldersOnly === "true",
+        limit: query.limit,
+        principal: context.get("principal"),
+        projectId: projectIdSchema.parse(context.req.param("projectId")),
+        search: query.search ?? null,
+        sort: query.sort,
+        tags: query.tags,
+      }),
+    ));
+    return context.json(folderContentsResponse(responseApplicationUrl(context, dependencies), page));
+  });
+
+  app.post(folderCollection, placementUnavailable, boundedJsonBody, async (context) => {
+    const body = createFolderSchema.strict().parse(await context.req.json());
+    const folder = await runHttpApplicationEffect(context, dependencies, FolderService.use(
+      (service) => service.write(folderWriteContext(context, body.id), {...body, kind: "create"}),
+    ));
+    return context.json({folder}, 201);
+  });
+
+  app.patch(folderRoute, placementUnavailable, boundedJsonBody, async (context) => {
+    const body = updateFolderSchema.strict().parse(await context.req.json());
+    const folder = await runHttpApplicationEffect(context, dependencies, FolderService.use(
+      (service) => service.write(folderWriteContext(context), {
+        ...body, kind: "update", id: folderIdSchema.parse(context.req.param("folderId")),
+      }),
+    ));
+    return context.json({folder});
+  });
+
+  app.delete(folderRoute, placementUnavailable, async (context) => {
+    const folder = await runHttpApplicationEffect(context, dependencies, FolderService.use(
+      (service) => service.write(folderWriteContext(context), {
+        kind: "delete",
+        id: folderIdSchema.parse(context.req.param("folderId")),
+        expectedRevision: z.coerce.number().pipe(folderRevisionSchema).parse(context.req.query("expectedRevision")),
+      }),
+    ));
+    return context.json({folder, recoverable: dependencies.trash === true});
+  });
+
+  const trashUnavailable = (context: Context<HttpEnvironment>, next: Next) =>
+    dependencies.trash === true ? next() : context.json({
+      error: {code: errorCodes.capabilityUnavailable, message: "Trash, recover, and purge are unavailable on this deployment."},
+    }, 501);
+  const trashWriteContext = (context: Context<HttpEnvironment>, projectId: string | null) => ({
+    principal: context.get("principal"),
+    projectId,
+    idempotencyKey: requiredIdempotencyKey(context.req.header("idempotency-key")),
+  });
+
+  app.get("/api/v1/trash", trashUnavailable, async (context) => {
+    const query = trashPageQuerySchema.parse(context.req.query());
+    const page = await runHttpApplicationEffect(context, dependencies, TrashService.use(
+      (service) => service.list({
+        principal: context.get("principal"),
+        projectIds: z.array(projectIdSchema).max(100).parse(context.req.queries("projectId") ?? []),
+        cursor: decodeTrashCursor(query.cursor ?? null),
+        limit: query.limit,
+      }),
+    ));
+    return context.json(trashPageResponse(page));
+  });
+
+  app.post("/api/v1/artifacts/:artifactId/recover", trashUnavailable, async (context) => {
+    const recovery = await runHttpApplicationEffect(context, dependencies, TrashService.use(
+      (service) => service.recover(trashWriteContext(context, requestedProjectId(context)), {
+        kind: "artifact", artifactId: z.string().min(1).parse(context.req.param("artifactId")),
+      }),
+    ));
+    return context.json(recovery);
+  });
+
+  app.post("/api/v1/artifacts/:artifactId/purge", trashUnavailable, boundedJsonBody, async (context) => {
+    const body = purgeSchema.strict().parse(await context.req.json());
+    const purge = await runHttpApplicationEffect(context, dependencies, TrashService.use(
+      (service) => service.purge(trashWriteContext(context, requestedProjectId(context)), {
+        kind: "artifact", artifactId: context.req.param("artifactId"), confirmation: body.confirm,
+      }),
+    ));
+    return context.json(purge);
+  });
+
+  app.post(`${folderRoute}/recover`, trashUnavailable, boundedJsonBody, async (context) => {
+    const body = folderRecoverSchema.strict().parse(await context.req.json());
+    const recovery = await runHttpApplicationEffect(context, dependencies, TrashService.use(
+      (service) => service.recover(
+        trashWriteContext(context, projectIdSchema.parse(context.req.param("projectId"))),
+        {kind: "folder", folderId: folderIdSchema.parse(context.req.param("folderId")), name: body.name},
+      ),
+    ));
+    return context.json(recovery);
+  });
+
+  app.post(`${folderRoute}/purge`, trashUnavailable, boundedJsonBody, async (context) => {
+    const body = purgeSchema.strict().parse(await context.req.json());
+    const purge = await runHttpApplicationEffect(context, dependencies, TrashService.use(
+      (service) => service.purge(
+        trashWriteContext(context, projectIdSchema.parse(context.req.param("projectId"))),
+        {kind: "folder", folderId: folderIdSchema.parse(context.req.param("folderId")), confirmation: body.confirm},
+      ),
+    ));
+    return context.json(purge);
+  });
+
+  const fileOverviewUnavailable = (context: Context<HttpEnvironment>, next: Next) =>
+    dependencies.folders === true ? next() : context.json({
+      error: {code: errorCodes.capabilityUnavailable, message: "The file overview and batch operations are unavailable on this deployment."},
+    }, 501);
+
+  app.get("/api/v1/files", fileOverviewUnavailable, async (context) => {
+    const page = await runHttpApplicationEffect(context, dependencies, FileCatalogService.use(
+      (service) => service.list(fileQueryCommand(context)),
+    ));
+    return context.json(filePageResponse(page));
+  });
+
+  app.get("/api/v1/files/facets", fileOverviewUnavailable, async (context) => {
+    const facets = await runHttpApplicationEffect(context, dependencies, FileCatalogService.use(
+      (service) => service.facets(fileQueryCommand(context)),
+    ));
+    return context.json({facets});
+  });
+
+  app.post("/api/v1/batch", fileOverviewUnavailable, boundedJsonBody, async (context) => {
+    const body = batchRequestSchema.parse(await context.req.json());
+    const batch = await runHttpApplicationEffect(context, dependencies, BatchService.use((service) => service.run({
+      principal: context.get("principal"),
+      operation: body.operation,
+      items: body.items,
+      parameters: body.params,
+      idempotencyKey: body.idempotencyKey,
+      confirm: body.confirm ?? null,
+    })));
+    return context.json(batchResponse(batch));
+  });
+
+  app.patch("/api/v1/artifacts/:artifactId/name", placementUnavailable, boundedJsonBody, async (context) => {
+    const body = artifactRenameSchema.strict().parse(await context.req.json());
+    const artifact = await runHttpApplicationEffect(context, dependencies, ArtifactPlacementService.use(
+      (service) => service.write({
+        artifactId: context.req.param("artifactId"),
+        projectId: requestedProjectId(context),
+        principal: context.get("principal"),
+        expectedCurrentVersionId: body.expectedCurrentVersionId,
+        idempotencyKey: requiredIdempotencyKey(context.req.header("idempotency-key")),
+      }, {kind: "rename", name: body.name}),
+    ));
+    return context.json({artifact});
+  });
+
+  app.post("/api/v1/artifacts/:artifactId/move", placementUnavailable, boundedJsonBody, async (context) => {
+    const {toProjectId, ...body} = artifactMoveSchema.strict().parse(await context.req.json());
+    const command = {
+      artifactId: context.req.param("artifactId"),
+      projectId: requestedProjectId(context),
+      principal: context.get("principal"),
+      expectedCurrentVersionId: body.expectedCurrentVersionId,
+      idempotencyKey: requiredIdempotencyKey(context.req.header("idempotency-key")),
+    };
+    const artifact = await runHttpApplicationEffect(context, dependencies, ArtifactPlacementService.use(
+      (service) => toProjectId === undefined
+        ? service.write(command, {kind: "move", toFolderId: body.toFolderId})
+        : service.moveAcrossProjects({...command, toProjectId}, body.toFolderId),
+    ));
+    return context.json({artifact});
+  });
+
+  app.post(`${folderRoute}/move-to-project`, placementUnavailable, boundedJsonBody, async (context) => {
+    const body = folderProjectMoveSchema.strict().parse(await context.req.json());
+    const folder = await runHttpApplicationEffect(context, dependencies, FolderService.use(
+      (service) => service.moveToProject({
+        ...folderWriteContext(context),
+        ...body,
+        folderId: folderIdSchema.parse(context.req.param("folderId")),
+      }),
+    ));
+    return context.json({folder});
+  });
+
+  app.get("/api/v1/artifacts/:artifactId/location", placementUnavailable, async (context) => {
+    const location = await runHttpApplicationEffect(context, dependencies, ArtifactPlacementService.use(
+      (service) => service.locate({
+        artifactId: z.string().min(1).parse(context.req.param("artifactId")),
+        principal: context.get("principal"),
+      }),
+    ));
+    return context.json({location});
+  });
+
   app.get("/api/v1/artifacts", async (context) => {
     const query = artifactPageQuerySchema.parse({
       ...context.req.query(),
@@ -2183,7 +2434,7 @@ export function createHttpApp(
           })
         ),
       );
-      return context.json(deletionResponse(deletion));
+      return context.json({...deletionResponse(deletion), recoverable: deletion.recoverable});
     },
   );
 
@@ -2478,6 +2729,15 @@ export function createHttpApp(
     }, 201);
   });
 
+  registerFolderLinkRoutes(app, {
+    applicationUrl: (context) => responseApplicationUrl(context, dependencies),
+    boundedJsonBody,
+    contentDomain: dependencies.contentDomain,
+    enabled: dependencies.linkedFolders === true,
+    isLoopbackHostname,
+    run: (context, effect) => runHttpApplicationEffect(context, dependencies, effect),
+  });
+
   app.get("/artifacts/:artifactId", async (context) => {
     const current = await runHttpApplicationEffect(
       context,
@@ -2503,8 +2763,8 @@ export function createHttpApp(
 
   app.onError(async (error, context) => {
     if (isArtifactServerFailure(error)) {
-      const response = httpFailure(error);
-      if (response.status >= 500) {
+      const {status, ...details} = httpFailure(error);
+      if (status >= 500) {
         await logAdapterFailure(
           dependencies.applicationRuntime,
           context.get("requestId"),
@@ -2513,7 +2773,7 @@ export function createHttpApp(
         );
       }
       const headers = new Headers();
-      if (response.status === 401) {
+      if (status === 401) {
         headers.set("Cache-Control", "private, no-store");
       }
       if (error._tag === "AuthenticationRequired") {
@@ -2523,10 +2783,10 @@ export function createHttpApp(
         );
       }
       return Response.json(
-        {error: {code: response.code, message: response.message}},
+        {error: details},
         {
           headers,
-          status: response.status,
+          status,
         },
       );
     }
@@ -2565,6 +2825,14 @@ export function createHttpApp(
   });
 
   return app;
+}
+
+/** Decode the overview query string, including repeated filters, for the signed-in principal. */
+function fileQueryCommand(context: Context<HttpEnvironment>) {
+  return fileListCommand(context.get("principal"), parseFileQuery({
+    single: context.req.query(),
+    repeated: (name) => context.req.queries(name) ?? [],
+  }));
 }
 
 function apiBearerChallenge(
@@ -2972,18 +3240,7 @@ function artifactPageResponse(
   page: ArtifactPage,
 ) {
   return {
-    artifacts: page.items.map(({commentCount, versionCount, ...artifact}) => ({
-      artifact,
-      commentCount,
-      links: {
-        artifact: artifactBrowserUrl(requestUrl, artifact.id),
-        management: new URL(
-          `/api/v1/artifacts/${artifact.id}`,
-          requestUrl,
-        ).toString(),
-      },
-      versionCount,
-    })),
+    artifacts: artifactPageItems(requestUrl, page.items),
     nextCursor: encodePageCursor(page.nextCursor),
   };
 }
@@ -3448,6 +3705,69 @@ async function serveLiveContent(
   return new Response(grant.source.stream(), {headers, status: 200});
 }
 
+/**
+ * Serve one untracked inventory entry's current bytes on its per-entry live
+ * origin (`live-fle-<uuid>`), with exactly the linked live-view audience,
+ * `no-store`, and verified-descriptor rules. The bootstrap exchange sets the
+ * ordinary content-session cookie scoped to this host.
+ */
+async function serveEntryLiveContent(
+  context: Context<HttpEnvironment>,
+  requestUrl: URL,
+  contentToken: string,
+  dependencies: HttpAppDependencies,
+): Promise<Response> {
+  const method = context.req.method;
+  if (method !== "GET" && method !== "HEAD") {
+    return Response.json(
+      {error: {code: errorCodes.methodNotAllowed, message: "Only GET and HEAD are supported."}},
+      {status: 405, headers: {Allow: "GET, HEAD"}},
+    );
+  }
+  if (isContentBootstrapRequest(requestUrl)) {
+    const parsed = contentSessionTokenSchema.safeParse(
+      requestUrl.searchParams.get(contentBootstrapQueryParameter),
+    );
+    if (!parsed.success || method !== "GET") {
+      throw new ContentBootstrapRejected({
+        message: "The private-content bootstrap is invalid or no longer available.",
+      });
+    }
+    const issued = await runHttpApplicationEffect(context, dependencies, LinkedFolderService.use((service) =>
+      service.exchangeEntryLiveBootstrap({
+        contentToken,
+        token: Redacted.make(parsed.data, {label: "content-bootstrap-token"}),
+      })
+    ));
+    return new Response(contentSessionExchangeHtml("/"), {
+      headers: {
+        "Cache-Control": "private, no-store",
+        "Content-Security-Policy": "default-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+        "Content-Type": "text/html; charset=utf-8",
+        "Referrer-Policy": "no-referrer",
+        "Set-Cookie": contentSessionCookie(
+          Redacted.value(issued.token),
+          issued.expiresAt,
+          usesSecureContentCookie(requestUrl),
+        ),
+      },
+      status: 200,
+    });
+  }
+  const grant = await runHttpApplicationEffect(context, dependencies, LinkedFolderService.use((service) =>
+    service.authorizeEntryLiveRead({
+      contentToken,
+      sessionToken: contentSessionToken(context.req.header("cookie")),
+    })
+  ));
+  const headers = liveContentHeaders(grant.mediaType, grant.source.size, "untracked", "inline");
+  if (method === "HEAD") {
+    await grant.source.close();
+    return new Response(null, {headers, status: 200});
+  }
+  return new Response(grant.source.stream(), {headers, status: 200});
+}
+
 function liveContentHeaders(
   mediaType: string,
   size: number,
@@ -3661,7 +3981,7 @@ async function serveVersionMedia(
   if (mediaKind === null) {
     return mediaPreviewFailure(
       errorCodes.mediaPreviewTypeUnsupported,
-      "This manifest entry is not an image or video preview.",
+      "This manifest entry is not an image, video, or audio preview.",
       415,
     );
   }
@@ -3748,7 +4068,7 @@ function permitsMediaPreviewRequest(
   method: string,
   headers: Headers,
   authenticationMethod: "bearer" | "session",
-  mediaKind: "image" | "video",
+  mediaKind: PreviewMediaKind,
 ): boolean {
   if (
     authenticationMethod !== "session" ||
@@ -3765,10 +4085,14 @@ function permitsMediaPreviewRequest(
     (mode === "cors" || mode === "same-origin" || mode === "no-cors");
 }
 
-function previewMediaKind(mediaType: string): "image" | "video" | null {
+/** The Fetch Metadata destination a native media element sends for its source. */
+type PreviewMediaKind = "audio" | "image" | "video";
+
+function previewMediaKind(mediaType: string): PreviewMediaKind | null {
   const essence = mediaType.split(";", 1)[0]?.trim().toLowerCase();
   if (essence?.startsWith("image/") === true) return "image";
   if (essence?.startsWith("video/") === true) return "video";
+  if (essence?.startsWith("audio/") === true) return "audio";
   return null;
 }
 
@@ -4074,6 +4398,28 @@ function reviewFrameContentSecurityPolicy(contentDomain: string): string {
   ].join("; ");
 }
 
+/**
+ * The trusted application document. Its only cross-origin frame is a PDF
+ * preview, which the browser's own viewer renders from an exact-version
+ * preview-lease host on the content domain. That origin never shares the
+ * application's cookies or storage, so framing it adds no application access.
+ */
+function applicationContentSecurityPolicy(contentDomain: string): string {
+  return [
+    "default-src 'self'",
+    "base-uri 'none'",
+    "connect-src 'self'",
+    "font-src 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    `frame-src 'self' http://*.${contentDomain}:* https://*.${contentDomain}`,
+    "img-src 'self' data:",
+    "object-src 'none'",
+    "script-src 'self'",
+    "style-src 'self'",
+  ].join("; ");
+}
+
 type WebAssetKind = "application-shell" | "review-frame" | "static-asset";
 
 async function serveWebAsset(
@@ -4092,7 +4438,7 @@ async function serveWebAsset(
       : "no-cache, must-revalidate",
     "Content-Security-Policy": kind === "review-frame"
       ? reviewFrameContentSecurityPolicy(dependencies.contentDomain)
-      : "default-src 'self'; base-uri 'none'; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'self'; style-src 'self'",
+      : applicationContentSecurityPolicy(dependencies.contentDomain),
     "Referrer-Policy": "no-referrer",
     "X-Content-Type-Options": "nosniff",
   });

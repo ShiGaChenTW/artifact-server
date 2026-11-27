@@ -1,31 +1,32 @@
-@import "../theme-tokens.css";
-@import "@fontsource/atkinson-hyperlegible-next/latin-400.css";
-@import "@fontsource/atkinson-hyperlegible-next/latin-500.css";
-@import "@fontsource/atkinson-hyperlegible-next/latin-600.css";
-@import "@fontsource/atkinson-hyperlegible-mono/latin-400.css";
-@import "@fontsource/atkinson-hyperlegible-mono/latin-500.css";
+/* Impeccable · direction: the night workbench under one lamp (surface brief .impeccable/surfaces/src-review.md) · one shell for the workspace, focus mode, the dashboard and settings
+ * colour: Plannotator theme: cool blue-grey in four steps, violet for the person and the one primary action, teal for agents, times and versions · type: Geist and Geist Mono, 12/13/14/16 · copy: verbatim where specs pin it (project/spec/send-all-spec.md) */
 
 :root {
-  --as-focus-comments-width: min(22rem, calc(100vw - 3rem));
+  --as-focus-comments-width: min(22rem, calc(100dvw - 3rem));
   --as-gap: 0.75rem;
-  --as-footer-height: 2.5rem;
+  --as-footer-height: var(--status-height);
   --as-header-height: 3rem;
-  --as-radius: 0;
-  --as-canvas: var(--background);
-  --as-surface: var(--background);
-  --as-surface-raised: var(--secondary);
-  --as-text: var(--foreground);
-  --as-subtle: var(--muted-foreground);
-  --as-muted: var(--muted-foreground);
-  --as-border: var(--border);
-  --as-iris: var(--sidebar-primary);
-  --as-iris-soft: color-mix(in oklab, var(--sidebar-primary) 12%, transparent);
-  --as-action: var(--primary);
-  --as-on-action: var(--primary-foreground);
-  --as-love: var(--destructive);
-  --as-gold: var(--chart-2);
-  color-scheme: dark;
-  font-family: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, sans-serif;
+  --as-radius: var(--radius-pill);
+  /* The workspace vocabulary, pointed at the workbench tokens. */
+  --as-canvas: var(--color-paper);
+  --as-surface: var(--color-paper);
+  --as-surface-raised: var(--color-paper-2);
+  --as-text: var(--color-ink);
+  --as-subtle: var(--color-ink-2);
+  --as-muted: var(--color-muted);
+  --as-border: var(--color-rule);
+  --as-border-strong: var(--color-rule-2);
+  --as-hover: var(--color-hover);
+  --as-stage: var(--color-stage);
+  --as-foam: var(--color-cool);
+  --as-pine: var(--color-ok);
+  --as-iris: var(--color-accent);
+  --as-iris-soft: var(--color-accent-soft);
+  --as-action: var(--color-accent);
+  --as-on-action: var(--color-accent-ink);
+  --as-love: var(--color-bad);
+  --as-gold: var(--color-warn);
+  font-family: var(--font-body);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -35,10 +36,6 @@
   color-scheme: light;
 }
 
-.dark {
-  --as-iris: color-mix(in oklab, var(--sidebar-primary) 70%, var(--foreground));
-  --as-iris-soft: color-mix(in oklab, var(--sidebar-primary) 14%, transparent);
-}
 
 * {
   box-sizing: border-box;
@@ -49,7 +46,8 @@ body,
 #review-root {
   height: 100%;
   margin: 0;
-  overflow: hidden;
+  /* The workspace scrolls inside its panes; clip keeps sticky working. */
+  overflow: clip;
 }
 
 body {
@@ -57,31 +55,38 @@ body {
   color: var(--as-text);
 }
 
-button,
-input,
-select {
-  color: inherit;
-  font: inherit;
-}
+/*
+ * Element defaults live in the base layer, under Tailwind's utilities, so a
+ * component class (a primary button's ink, a control's ring) is never
+ * overridden by an unlayered element rule.
+ */
+@layer base {
+  button,
+  input,
+  select {
+    color: inherit;
+    font: inherit;
+  }
 
-button,
-a,
-select,
-input {
-  touch-action: manipulation;
-}
+  button,
+  a,
+  select,
+  input {
+    touch-action: manipulation;
+  }
 
-button,
-a {
-  -webkit-tap-highlight-color: transparent;
-}
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
 
-button:focus-visible,
-a:focus-visible,
-input:focus-visible,
-select:focus-visible {
-  outline: 1px solid var(--as-iris);
-  outline-offset: 2px;
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
 }
 
 .as-visually-hidden {
@@ -155,6 +160,13 @@ select:focus-visible {
 
 .as-app[data-focus-mode="true"] .as-preview-panel__body {
   grid-row: 1;
+  padding: 0;
+}
+
+.as-app[data-focus-mode="true"] .as-artifact-frame {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .as-app[data-focus-mode="true"] .as-preview-panel__body[data-preview-kind="html"] {
@@ -167,7 +179,7 @@ select:focus-visible {
 }
 
 .as-home-overlay__backdrop {
-  background: rgb(0 0 0 / 14%);
+  background: var(--color-scrim);
   inset: 0;
   position: fixed;
   transition: opacity 120ms ease;
@@ -314,13 +326,13 @@ select:focus-visible {
 }
 
 .as-home-resources__identity strong {
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   font-weight: 600;
 }
 
 .as-home-resources__identity > span {
   color: var(--as-subtle);
-  font-size: 0.68rem;
+  font-size: var(--text-xs);
   margin-top: 0.15rem;
 }
 
@@ -426,8 +438,8 @@ select:focus-visible {
   background: var(--as-surface-raised);
   border: 1px solid var(--as-border);
   color: var(--as-subtle);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
-  font-size: 0.68rem;
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
   line-height: 1;
   padding: 0.45rem 0.55rem;
   pointer-events: none;
@@ -475,9 +487,10 @@ select:focus-visible {
 
 .as-catalog__brand {
   align-items: center;
-  background: var(--as-action);
+  background: var(--color-paper-2);
+  border: 1px solid var(--color-rule-2);
   border-radius: var(--as-radius);
-  color: var(--as-on-action);
+  color: var(--color-ink);
   display: inline-flex;
   flex: 0 0 auto;
   height: 2rem;
@@ -500,7 +513,7 @@ select:focus-visible {
   display: flex;
   flex: 1;
   font-family: inherit;
-  font-size: 0.9rem;
+  font-size: var(--text-md);
   font-weight: 600;
   gap: 0.35rem;
   justify-content: space-between;
@@ -535,9 +548,7 @@ select:focus-visible {
 .as-project-popover {
   background: var(--as-surface);
   border: 1px solid var(--as-border);
-  box-shadow:
-    0 1.75rem 5rem rgb(0 0 0 / 52%),
-    0 0.35rem 1.2rem rgb(0 0 0 / 24%);
+  box-shadow: none;
   gap: 0.5rem;
   max-height: min(28rem, var(--available-height));
   overflow: auto;
@@ -565,7 +576,7 @@ select:focus-visible {
   cursor: pointer;
   display: flex;
   font: inherit;
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   gap: 0.55rem;
   min-height: 2rem;
   padding: 0.35rem 0.5rem;
@@ -606,9 +617,7 @@ select:focus-visible {
 }
 
 :root[data-review-theme="dawn"] .as-project-popover {
-  box-shadow:
-    0 1.75rem 5rem rgb(0 0 0 / 20%),
-    0 0.35rem 1.2rem rgb(0 0 0 / 10%);
+  box-shadow: none;
 }
 
 .as-project-list {
@@ -659,10 +668,8 @@ select:focus-visible {
 
 .as-project-option__status {
   color: var(--as-subtle);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
-  font-size: 0.65rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
 }
 
 .as-project-option > svg {
@@ -700,14 +707,15 @@ select:focus-visible {
 .as-catalog-query-controls select,
 .as-catalog-filter-trigger {
   align-items: center;
-  background: var(--as-surface-raised);
-  border: 1px solid var(--as-border);
-  border-radius: 0;
-  color: var(--as-muted);
+  background: var(--color-paper-3);
+  /* A field's edge needs 3:1 against its surround; a rule never has it. */
+  border: 1px solid var(--color-muted);
+  border-radius: var(--as-radius);
+  color: var(--color-ink-2);
   color-scheme: inherit;
-  font-family: "Atkinson Hyperlegible Mono", monospace;
-  font-size: 0.66rem;
-  min-height: 1.85rem;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  min-height: 2rem;
   padding: 0.28rem 0.45rem;
 }
 
@@ -734,11 +742,11 @@ select:focus-visible {
 
 .as-catalog-filter-trigger__count {
   align-items: center;
-  background: var(--as-iris-soft);
-  color: var(--as-iris);
+  background: var(--color-cool-soft);
+  color: var(--color-cool);
   display: inline-flex;
   flex: 0 0 auto;
-  font-size: 0.58rem;
+  font-size: var(--text-xs);
   justify-content: center;
   min-height: 1rem;
   min-width: 1rem;
@@ -752,8 +760,7 @@ select:focus-visible {
 
 .as-catalog-query-controls select:focus-visible,
 .as-catalog-filter-trigger:focus-visible {
-  border-color: var(--as-iris);
-  outline: 1px solid var(--as-iris);
+  outline: 2px solid var(--color-focus);
   outline-offset: 1px;
 }
 
@@ -765,16 +772,14 @@ select:focus-visible {
 .as-catalog-filter-popover {
   background: var(--as-surface);
   border: 1px solid var(--as-border);
-  box-shadow:
-    0 1rem 3rem rgb(0 0 0 / 42%),
-    0 0.2rem 0.8rem rgb(0 0 0 / 22%);
+  box-shadow: none;
   color: var(--as-text);
   max-height: min(28rem, var(--available-height));
   outline: none;
   overflow-y: auto;
   transform-origin: var(--transform-origin);
   transition: opacity 140ms ease, transform 160ms cubic-bezier(0.19, 1, 0.22, 1);
-  width: min(17rem, calc(100vw - 1rem));
+  width: min(17rem, calc(var(--available-width, 100dvw) - 1rem));
 }
 
 .as-catalog-filter-popover[data-starting-style],
@@ -794,9 +799,9 @@ select:focus-visible {
 .as-catalog-filter-popover__clear {
   background: transparent;
   border: 0;
-  color: var(--as-iris);
+  color: var(--color-ink-2);
   cursor: pointer;
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   min-height: 1.5rem;
   padding: 0.1rem 0.2rem;
 }
@@ -820,11 +825,9 @@ select:focus-visible {
 
 .as-catalog-filter-popover legend {
   color: var(--as-subtle);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
-  font-size: 0.61rem;
-  letter-spacing: 0.08em;
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
   padding: 0.1rem 0.15rem 0.35rem;
-  text-transform: uppercase;
 }
 
 .as-catalog-filter-option {
@@ -834,7 +837,7 @@ select:focus-visible {
   color: var(--as-muted);
   cursor: pointer;
   display: flex;
-  font-size: 0.74rem;
+  font-size: var(--text-xs);
   gap: 0.5rem;
   min-height: 2rem;
   padding: 0.35rem 0.45rem;
@@ -875,14 +878,14 @@ select:focus-visible {
 
 .as-catalog-filter-popover__empty {
   color: var(--as-subtle);
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   margin: 0;
   padding: 0.35rem 0.45rem;
 }
 
 .as-search-scope {
   color: var(--as-muted);
-  font-size: 0.68rem;
+  font-size: var(--text-xs);
   line-height: 1.2;
   padding-inline: 0.15rem;
 }
@@ -909,6 +912,9 @@ select:focus-visible {
 }
 
 .as-catalog-refresh[data-state="loading"]:disabled {
+  background: var(--color-paper-3);
+  color: var(--color-muted);
+  cursor: not-allowed;
   opacity: 1;
 }
 
@@ -945,8 +951,8 @@ select:focus-visible {
 
 .as-search {
   align-items: center;
-  background: color-mix(in oklab, var(--as-canvas) 72%, transparent);
-  border: 1px solid var(--as-border);
+  background: var(--color-paper-3);
+  border: 1px solid var(--color-muted);
   border-radius: var(--as-radius);
   display: flex;
   width: 100%;
@@ -956,8 +962,8 @@ select:focus-visible {
 }
 
 .as-search:focus-within {
-  border-color: var(--as-iris);
-  box-shadow: 0 0 0 2px var(--as-iris-soft);
+  outline: 2px solid var(--color-focus);
+  outline-offset: -1px;
 }
 
 .as-search > svg {
@@ -969,9 +975,9 @@ select:focus-visible {
 .as-search input {
   background: transparent;
   border: 0;
-  font-family: "Atkinson Hyperlegible Mono", monospace;
-  font-size: 0.8rem;
-  min-height: 2.15rem;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  min-height: 1.875rem;
   min-width: 0;
   outline: 0;
   width: 100%;
@@ -1006,19 +1012,25 @@ select:focus-visible {
 .as-artifact-card {
   background: transparent;
   border: 0;
-  border-bottom: 1px solid color-mix(in oklab, var(--as-border) 68%, transparent);
+  border-bottom: 1px solid var(--as-border);
   color: var(--as-text);
   cursor: pointer;
   display: grid;
-  gap: 0.35rem;
-  min-height: 5rem;
-  padding: 0.75rem;
+  gap: 0.3rem;
+  min-height: 4.25rem;
+  padding: 0.65rem 0.85rem;
   text-align: left;
   width: 100%;
 }
 
+.as-artifact-card:hover {
+  background: var(--as-hover);
+}
+
+/* The row under the lamp: the selection takes the person's colour. */
 .as-artifact-card[data-selected="true"] {
-  background: var(--as-surface-raised);
+  background: var(--as-hover);
+  box-shadow: inset 2px 0 0 var(--color-accent);
 }
 
 .as-artifact-card__title-row {
@@ -1029,9 +1041,9 @@ select:focus-visible {
   min-width: 0;
 }
 
-.as-artifact-card__title-row strong {
-  font-size: 0.9rem;
-  font-weight: 600;
+.as-artifact-card__name {
+  font-size: var(--text-md);
+  font-weight: 500;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1042,21 +1054,24 @@ select:focus-visible {
   align-items: center;
   color: var(--as-muted);
   display: flex;
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   gap: 0.75rem;
   justify-content: space-between;
   min-width: 0;
 }
 
 .as-artifact-card__history {
-  align-items: center;
+  align-items: baseline;
   display: inline-flex;
   flex: 1;
-  gap: 0.35rem;
+  gap: var(--space-sm);
   min-width: 0;
 }
 
 .as-artifact-card__history time {
+  color: var(--color-cool);
+  font-family: var(--font-outlier);
+  font-variant-numeric: tabular-nums slashed-zero;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1090,7 +1105,7 @@ select:focus-visible {
 .as-mono,
 .as-tabular,
 .as-file-list code {
-  font-family: "Atkinson Hyperlegible Mono", ui-monospace, monospace;
+  font-family: var(--font-outlier);
 }
 
 .as-tabular,
@@ -1103,29 +1118,31 @@ select:focus-visible {
 .as-tag {
   border-radius: var(--as-radius);
   display: inline-flex;
-  font-family: "Atkinson Hyperlegible Mono", monospace;
-  font-size: 0.64rem;
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
   line-height: 1;
   padding: 0.27rem 0.45rem;
   white-space: nowrap;
 }
 
 .as-pill {
-  background: var(--as-surface-raised);
-  color: var(--secondary-foreground);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--as-border-strong);
+  color: var(--as-muted);
 }
 
 .as-pill[data-access="public_link"] {
-  background: color-mix(in oklab, var(--as-iris) 16%, transparent);
-  color: var(--as-iris);
+  background: var(--color-cool-soft);
+  box-shadow: none;
+  color: var(--color-cool);
 }
 
 .as-app-footer {
   align-items: center;
   color: var(--as-muted);
   display: flex;
-  font-family: "Atkinson Hyperlegible Mono", monospace;
-  font-size: 0.72rem;
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
   min-height: var(--as-footer-height);
 }
 
@@ -1188,52 +1205,23 @@ select:focus-visible {
   width: 0.95rem;
 }
 
-.as-keyboard-shortcuts__positioner {
-  isolation: isolate;
-  z-index: 70;
-}
-
 .as-keyboard-shortcuts {
-  background: var(--as-surface);
-  border: 1px solid var(--as-border);
-  box-shadow:
-    0 1rem 3rem rgb(0 0 0 / 42%),
-    0 0.2rem 0.8rem rgb(0 0 0 / 22%);
-  color: var(--as-text);
-  max-height: min(28rem, var(--available-height));
-  outline: none;
+  max-height: min(28rem, 70dvh);
   overflow-y: auto;
-  transform-origin: var(--transform-origin);
-  transition: opacity 140ms ease, transform 160ms cubic-bezier(0.19, 1, 0.22, 1);
-  width: min(19rem, calc(100vw - 1rem));
 }
 
-.as-keyboard-shortcuts[data-starting-style],
-.as-keyboard-shortcuts[data-ending-style] {
-  opacity: 0;
-  transform: translateY(0.2rem) scale(0.985);
-}
-
-.as-keyboard-shortcuts__title {
-  display: block;
-  font-size: 0.8rem;
-  font-weight: 600;
-  padding: 0.75rem;
-}
-
-.as-keyboard-shortcuts section {
+.as-keyboard-shortcuts section,
+.as-keyboard-shortcuts > dl {
   border-top: 1px solid var(--as-border);
-  padding: 0.65rem 0.75rem;
+  padding: 0.65rem 0;
 }
 
 .as-keyboard-shortcuts h3 {
   color: var(--as-subtle);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
-  font-size: 0.6rem;
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
   font-weight: 500;
-  letter-spacing: 0.08em;
   margin: 0 0 0.35rem;
-  text-transform: uppercase;
 }
 
 .as-keyboard-shortcuts dl {
@@ -1252,7 +1240,7 @@ select:focus-visible {
 
 .as-keyboard-shortcuts dt {
   color: var(--as-muted);
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   line-height: 1.3;
 }
 
@@ -1266,7 +1254,7 @@ select:focus-visible {
 
 .as-keyboard-shortcuts dd span {
   color: var(--as-subtle);
-  font-size: 0.6rem;
+  font-size: var(--text-xs);
 }
 
 .as-keyboard-shortcuts kbd {
@@ -1276,8 +1264,8 @@ select:focus-visible {
   box-shadow: 0 1px 0 color-mix(in oklab, var(--as-text) 10%, transparent);
   color: var(--as-text);
   display: inline-flex;
-  font-family: "Atkinson Hyperlegible Mono", monospace;
-  font-size: 0.64rem;
+  font-family: var(--font-outlier);
+  font-size: var(--text-xs);
   justify-content: center;
   min-height: 1.35rem;
   min-width: 1.35rem;
@@ -1290,7 +1278,7 @@ select:focus-visible {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  padding: var(--as-gap) var(--as-gap) 0;
+  padding: 0;
   position: relative;
 }
 
@@ -1301,9 +1289,8 @@ select:focus-visible {
 .as-preview-panel,
 .as-inspector {
   background: var(--as-surface);
-  border: 1px solid var(--as-border);
-  border-bottom: 0;
-  border-radius: var(--as-radius) var(--as-radius) 0 0;
+  border: 0;
+  border-radius: 0;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
@@ -1357,17 +1344,23 @@ select:focus-visible {
   transform: none;
 }
 
+/* One floating toolbar over the artifact, the same buttons as the workspace's. */
 .as-focus-controls {
   align-items: center;
+  background: var(--as-surface-raised);
+  border: 1px solid var(--as-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-overlay);
   display: flex;
-  gap: 0.35rem;
+  gap: 0.1rem;
   opacity: 1;
+  padding: 0.2rem;
   transition:
     opacity 160ms ease,
     transform 220ms cubic-bezier(0.19, 1, 0.22, 1);
 }
 
-.as-focus-controls-dock[data-collapsed="true"] .as-focus-controls {
+.js .as-focus-controls-dock[data-collapsed="true"] .as-focus-controls {
   opacity: 0;
   pointer-events: none;
   transform: translateX(calc(100% + 1.5rem));
@@ -1375,40 +1368,40 @@ select:focus-visible {
 }
 
 .as-focus-controls__button,
-.as-focus-controls__collapse,
+.as-focus-controls__collapse {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--as-subtle);
+}
+
 .as-focus-controls__restore {
-  background: color-mix(in oklab, var(--as-surface) 88%, transparent);
-  border-color: color-mix(in oklab, var(--as-border) 80%, transparent);
-  box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 18%);
+  background: var(--as-surface-raised);
+  border-color: var(--as-border);
+  box-shadow: var(--shadow-overlay);
   color: var(--as-text);
-  backdrop-filter: blur(10px);
 }
 
 .as-focus-controls__button {
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: var(--text-sm);
+  font-weight: 500;
   white-space: nowrap;
 }
 
 .as-focus-controls__button[data-active="true"] {
-  background: color-mix(in oklab, var(--as-iris) 18%, var(--as-surface));
-  border-color: color-mix(in oklab, var(--as-iris) 48%, var(--as-border));
+  background: var(--color-accent-soft);
+  border-color: transparent;
+  color: var(--as-iris);
 }
 
 .as-focus-controls__count {
-  align-items: center;
-  background: var(--as-iris-soft);
-  color: var(--as-iris);
-  display: inline-flex;
-  font-family: "Atkinson Hyperlegible Mono", monospace;
-  font-size: 0.6rem;
-  justify-content: center;
-  min-height: 1.1rem;
-  min-width: 1.1rem;
-  padding: 0 0.2rem;
+  color: var(--color-cool);
+  font-family: var(--font-outlier);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
 }
 
-.as-focus-controls__collapse {
+.js .as-focus-controls__collapse {
   opacity: 0;
   pointer-events: none;
   transform: translateX(0.35rem);
@@ -1425,7 +1418,7 @@ select:focus-visible {
   transform: translateX(0);
 }
 
-.as-focus-controls__restore {
+.js .as-focus-controls__restore {
   align-items: center;
   border: 1px solid color-mix(in oklab, var(--as-border) 80%, transparent);
   border-right: 0;
@@ -1452,7 +1445,7 @@ select:focus-visible {
   width: 0.95rem;
 }
 
-.as-focus-controls-dock[data-collapsed="true"] .as-focus-controls__restore {
+.js .as-focus-controls-dock[data-collapsed="true"] .as-focus-controls__restore {
   opacity: 0;
   pointer-events: none;
   right: 0;
@@ -1472,11 +1465,11 @@ select:focus-visible {
   transition: none;
 }
 
-.as-focus-comments {
+.js .as-focus-comments {
   background: color-mix(in oklab, var(--as-surface) 96%, transparent);
   border-left: 1px solid var(--as-border);
   bottom: 0;
-  box-shadow: -1rem 0 2.5rem rgb(0 0 0 / 20%);
+  box-shadow: none;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   opacity: 0;
@@ -1513,16 +1506,17 @@ select:focus-visible {
 }
 
 .as-focus-comments__header h2 {
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   margin: 0;
+  text-wrap: balance;
 }
 
 .as-focus-comments__header span {
-  background: var(--as-iris-soft);
-  color: var(--as-iris);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
-  font-size: 0.6rem;
+  background: var(--color-cool-soft);
+  color: var(--color-cool);
+  font-family: var(--font-outlier);
+  font-size: var(--text-xs);
   min-width: 1.15rem;
   padding: 0.13rem 0.35rem;
   text-align: center;
@@ -1542,8 +1536,16 @@ select:focus-visible {
 
 .as-preview-header {
   justify-content: space-between;
-  min-height: 3.65rem;
-  padding: 0.4rem 0.55rem 0.4rem 0.75rem;
+  min-height: var(--as-header-height);
+  padding: 0.35rem 0.55rem 0.35rem 0.9rem;
+}
+
+.as-preview-header__version {
+  color: var(--color-cool);
+  flex: 0 0 auto;
+  font-family: var(--font-outlier);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
 }
 
 .as-preview-header__identity,
@@ -1560,6 +1562,7 @@ select:focus-visible {
 
 .as-preview-header__actions {
   flex: 0 0 auto;
+  gap: 0.15rem;
 }
 
 .as-preview-header__actions > .as-button,
@@ -1568,8 +1571,9 @@ select:focus-visible {
 }
 
 .as-preview-header h1 {
-  font-size: 0.92rem;
+  font-size: var(--text-md);
   font-weight: 600;
+  letter-spacing: 0;
   line-height: 1.15;
   margin: 0;
   min-width: 0;
@@ -1584,7 +1588,7 @@ select:focus-visible {
 }
 
 .as-share-backdrop {
-  background: rgb(0 0 0 / 12%);
+  background: var(--color-scrim);
   inset: 0;
   position: fixed;
   transition: opacity 140ms ease;
@@ -1599,9 +1603,7 @@ select:focus-visible {
 .as-share-popover {
   background: var(--as-surface);
   border: 1px solid var(--as-border);
-  box-shadow:
-    0 1.75rem 5rem rgb(0 0 0 / 52%),
-    0 0.35rem 1.2rem rgb(0 0 0 / 24%);
+  box-shadow: none;
   color: var(--as-text);
   max-height: min(45rem, calc(100dvh - 1.5rem));
   outline: none;
@@ -1610,7 +1612,7 @@ select:focus-visible {
   transition:
     opacity 140ms ease,
     transform 160ms cubic-bezier(0.19, 1, 0.22, 1);
-  width: min(35rem, calc(100vw - 1rem));
+  width: min(35rem, calc(var(--available-width, 100dvw) - 1rem));
 }
 
 .as-share-popover[data-starting-style],
@@ -1639,14 +1641,15 @@ select:focus-visible {
 }
 
 .as-share-popover__header h2 {
-  font-size: 0.88rem;
+  font-size: var(--text-md);
   font-weight: 600;
   margin: 0;
+  text-wrap: balance;
 }
 
 .as-share-popover__header p {
   color: var(--as-subtle);
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   margin: 0.18rem 0 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1681,11 +1684,9 @@ select:focus-visible {
 .as-share-link h3,
 .as-share-agent h3 {
   color: color-mix(in oklab, var(--as-subtle) 80%, var(--as-text));
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   font-weight: 600;
-  letter-spacing: 0.08em;
   margin: 0;
-  text-transform: uppercase;
 }
 
 .as-share-link > div {
@@ -1699,8 +1700,8 @@ select:focus-visible {
   background: color-mix(in oklab, var(--as-surface-raised) 60%, transparent);
   border: 1px solid var(--as-border);
   color: var(--as-subtle);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
-  font-size: 0.68rem;
+  font-family: var(--font-outlier);
+  font-size: var(--text-xs);
   min-width: 0;
   overflow: hidden;
   padding: 0.62rem 0.7rem;
@@ -1719,14 +1720,14 @@ select:focus-visible {
 }
 
 .as-share-access-summary p {
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   line-height: 1.45;
   margin: 0;
 }
 
 .as-share-access-summary .as-button,
 .as-share-access-editor__actions .as-button {
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   min-height: 1.85rem;
 }
 
@@ -1738,11 +1739,9 @@ select:focus-visible {
 
 .as-share-secondary > h3 {
   color: color-mix(in oklab, var(--as-muted) 82%, var(--as-text));
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   font-weight: 600;
-  letter-spacing: 0.08em;
   margin: 0 0 0.35rem;
-  text-transform: uppercase;
 }
 
 .as-share-secondary__row {
@@ -1759,20 +1758,20 @@ select:focus-visible {
 }
 
 .as-share-secondary__row strong {
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   font-weight: 600;
 }
 
 .as-share-secondary__row small {
   color: color-mix(in oklab, var(--as-muted) 82%, var(--as-text));
-  font-size: 0.6rem;
+  font-size: var(--text-xs);
   line-height: 1.25;
 }
 
 .as-share-secondary__row code {
   color: var(--as-subtle);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
-  font-size: 0.65rem;
+  font-family: var(--font-outlier);
+  font-size: var(--text-xs);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1794,7 +1793,7 @@ select:focus-visible {
 
 .as-share-agent > p {
   color: var(--as-subtle);
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   line-height: 1.45;
   margin: 0.3rem 0 0;
 }
@@ -1806,7 +1805,7 @@ select:focus-visible {
   color: var(--as-text);
   cursor: pointer;
   display: inline-grid;
-  font-size: 0.74rem;
+  font-size: var(--text-xs);
   font-weight: 600;
   gap: 0.55rem;
   grid-template-columns: auto auto auto;
@@ -1874,7 +1873,7 @@ select:focus-visible {
   color: var(--as-text);
   cursor: pointer;
   display: flex;
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   font-weight: 600;
   gap: 0.2rem;
   justify-content: center;
@@ -1884,25 +1883,15 @@ select:focus-visible {
 }
 
 :root[data-review-theme="dawn"] .as-share-backdrop {
-  background: rgb(0 0 0 / 7%);
+  background: var(--color-paper-3);
 }
 
 :root[data-review-theme="dawn"] .as-share-popover {
-  box-shadow:
-    0 1.75rem 5rem rgb(0 0 0 / 20%),
-    0 0.35rem 1.2rem rgb(0 0 0 / 10%);
+  box-shadow: none;
 }
 
 :root[data-review-theme="dawn"] .as-catalog-filter-popover {
-  box-shadow:
-    0 1rem 3rem rgb(0 0 0 / 16%),
-    0 0.2rem 0.8rem rgb(0 0 0 / 8%);
-}
-
-:root[data-review-theme="dawn"] .as-keyboard-shortcuts {
-  box-shadow:
-    0 1rem 3rem rgb(0 0 0 / 16%),
-    0 0.2rem 0.8rem rgb(0 0 0 / 8%);
+  box-shadow: none;
 }
 
 .as-share-agent-setup {
@@ -1911,7 +1900,7 @@ select:focus-visible {
 
 .as-share-agent-setup > p {
   color: var(--as-subtle);
-  font-size: 0.74rem;
+  font-size: var(--text-xs);
   line-height: 1.45;
   margin: 0 0 0.15rem;
 }
@@ -1933,19 +1922,23 @@ select:focus-visible {
 }
 
 .as-share-agent-setup section > header strong {
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   font-weight: 600;
 }
 
 .as-share-agent-setup section > header span {
-  color: var(--as-iris);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
-  font-size: 0.64rem;
+  color: var(--color-cool);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+}
+
+.as-share-agent-setup section > header abbr {
+  text-decoration: none;
 }
 
 .as-share-agent-setup section > p {
   color: var(--as-subtle);
-  font-size: 0.71rem;
+  font-size: var(--text-xs);
   line-height: 1.45;
   margin: 0.3rem 0 0;
 }
@@ -1960,8 +1953,8 @@ select:focus-visible {
   background: color-mix(in oklab, var(--as-surface-raised) 60%, transparent);
   border: 1px solid var(--as-border);
   color: var(--as-text);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
-  font-size: 0.68rem;
+  font-family: var(--font-outlier);
+  font-size: var(--text-xs);
   min-width: 0;
   overflow: hidden;
   padding: 0.55rem 0.65rem;
@@ -1988,7 +1981,7 @@ select:focus-visible {
 
 .as-share-message {
   border: 1px solid var(--as-border);
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   line-height: 1.45;
   margin: 0.5rem 0 0;
   padding: 0.55rem 0.65rem;
@@ -2008,13 +2001,13 @@ select:focus-visible {
   background: color-mix(in oklab, var(--as-surface-raised) 34%, transparent);
   border-top: 1px solid var(--as-border);
   color: var(--as-subtle);
-  font-size: 0.68rem;
+  font-size: var(--text-xs);
   padding: 0.65rem 0.9rem;
 }
 
 .as-share-access-editor > p:first-child {
   color: var(--as-subtle);
-  font-size: 0.74rem;
+  font-size: var(--text-xs);
   line-height: 1.45;
   margin: 0 0 0.65rem;
 }
@@ -2044,7 +2037,7 @@ select:focus-visible {
 }
 
 .as-share-access-option:has(input:focus-visible) {
-  outline: 1px solid var(--as-iris);
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
@@ -2079,20 +2072,20 @@ select:focus-visible {
 }
 
 .as-share-access-option strong {
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   font-weight: 600;
 }
 
 .as-share-access-option small {
   color: var(--as-subtle);
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   line-height: 1.4;
   margin-top: 0.18rem;
 }
 
 .as-share-network-note,
 .as-share-access-warning {
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   line-height: 1.45;
   margin: 0.65rem 0 0;
   padding: 0.6rem 0.7rem;
@@ -2116,19 +2109,21 @@ select:focus-visible {
 }
 
 .as-preview-panel__body {
-  background:
-    linear-gradient(var(--as-border) 1px, transparent 1px),
-    linear-gradient(90deg, var(--as-border) 1px, transparent 1px),
-    var(--as-canvas);
-  background-size: 22px 22px;
+  background: var(--stage-light), var(--as-stage);
   min-height: 0;
   overflow: hidden;
+  padding: 1rem 1.25rem 0;
   position: relative;
 }
 
+/* The artifact lies on the stage like a sheet under the lamp. */
 .as-artifact-frame {
-  background: var(--as-surface);
-  border: 0;
+  background: var(--color-sheet);
+  color-scheme: light;
+  border: 1px solid var(--as-border);
+  border-bottom: 0;
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+  box-shadow: 0 -1px 0 color-mix(in oklab, var(--color-ink) 4%, transparent), 0 18px 48px -18px var(--color-overlay-shadow);
   display: block;
   height: 100%;
   width: 100%;
@@ -2138,7 +2133,7 @@ select:focus-visible {
   background: color-mix(in oklab, var(--as-love) 15%, var(--as-surface));
   border-bottom: 1px solid color-mix(in oklab, var(--as-love) 34%, transparent);
   color: var(--as-love);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   left: 0;
   padding: 0.55rem 0.75rem;
   position: absolute;
@@ -2148,7 +2143,10 @@ select:focus-visible {
 }
 
 .as-preview-footer {
+  background: var(--as-surface);
   border-top: 1px solid var(--as-border);
+  font-family: var(--font-outlier);
+  min-height: var(--status-height);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto max-content;
   padding: 0 0.6rem;
@@ -2173,7 +2171,7 @@ select:focus-visible {
 }
 
 .as-preview-footer__reload {
-  font-size: 0.68rem;
+  font-size: var(--text-xs);
   gap: 0.3rem;
   min-height: 1.75rem;
   padding: 0.2rem 0.4rem;
@@ -2222,6 +2220,14 @@ select:focus-visible {
   height: 2rem;
   min-width: 2rem;
   padding: 0;
+  transition: background-color var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out);
+}
+
+.as-icon-button:hover:not(:disabled),
+.as-button--ghost:hover:not(:disabled),
+.as-button--secondary:hover:not(:disabled) {
+  background: var(--as-hover);
+  color: var(--as-text);
 }
 
 .as-icon-button svg,
@@ -2231,34 +2237,59 @@ select:focus-visible {
 }
 
 .as-button {
+  font-size: var(--text-sm);
+  font-weight: 500;
   gap: 0.4rem;
-  min-height: 2.15rem;
-  padding: 0.35rem 0.7rem;
+  min-height: 2rem;
+  padding: 0 0.7rem;
+  transition: background-color var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out), border-color var(--dur-micro) var(--ease-out);
+  white-space: nowrap;
+}
+
+.as-button--ghost {
+  color: var(--as-subtle);
+  padding-inline: 0.55rem;
+}
+
+/* A pressed toggle reads the same in the toolbar and in focus mode. */
+.as-button[data-active="true"] {
+  background: var(--color-accent-soft);
+  border-color: transparent;
+  color: var(--as-iris);
+}
+
+.as-button--primary:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--as-action) 88%, var(--color-ink));
 }
 
 .as-button--primary {
   background: var(--as-action);
   color: var(--as-on-action);
-  font-size: 0.78rem;
-  font-weight: 600;
+  font-size: var(--text-sm);
+  font-weight: 500;
 }
 
 .as-button--secondary {
-  border-color: var(--as-border);
+  border-color: var(--as-border-strong);
   color: var(--as-text);
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
   font-weight: 500;
 }
 
 .as-icon-button:disabled,
 .as-button:disabled {
-  cursor: default;
-  opacity: 0.35;
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.as-icon-button:active:not(:disabled),
+.as-button:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .as-icon-button[data-active="true"] {
-  background: color-mix(in oklab, var(--as-iris) 16%, var(--as-surface));
-  border-color: color-mix(in oklab, var(--as-iris) 48%, var(--as-border));
+  background: var(--color-accent-soft);
+  border-color: transparent;
   color: var(--as-iris);
 }
 
@@ -2268,55 +2299,59 @@ select:focus-visible {
   flex: 0 0 auto;
   grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
-  margin-left: var(--as-gap);
+  border-left: 1px solid var(--as-border);
 }
 
 .as-inspector__header {
-  align-items: flex-end;
+  align-items: stretch;
   justify-content: space-between;
-  padding: 0.25rem 0.35rem 0 0.35rem;
+  padding: 0 0.35rem 0 0.5rem;
 }
 
 .as-tabs {
-  align-items: flex-end;
+  align-items: stretch;
   display: flex;
-  gap: 0.15rem;
+  gap: 0;
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
+  /* The row scrolls when its tabs do not fit; the fading edge says so. */
+  mask-image: linear-gradient(to right, var(--color-ink) calc(100% - 1rem), transparent);
 }
 
 .as-tab {
   align-items: center;
   background: transparent;
-  border: 1px solid transparent;
-  border-bottom: 0;
-  border-radius: var(--as-radius);
-  color: var(--as-iris);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--color-muted);
   cursor: pointer;
   display: flex;
-  font-size: 0.78rem;
-  gap: 0.35rem;
-  min-height: 2.35rem;
-  padding: 0 0.65rem;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  gap: 0.3rem;
+  margin-bottom: -1px;
+  min-height: var(--as-header-height);
+  padding: 2px 0.4rem 0;
+  transition: color var(--dur-micro) var(--ease-out);
+  white-space: nowrap;
+}
+
+.as-tab:hover {
+  color: var(--as-text);
 }
 
 .as-tab[data-active="true"] {
-  background: var(--as-surface);
-  border-color: var(--as-border);
+  border-bottom-color: var(--as-iris);
   color: var(--as-text);
-  position: relative;
-  top: 1px;
 }
 
 .as-tab > span {
-  background: var(--as-iris-soft);
-  border-radius: var(--as-radius);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
-  font-size: 0.62rem;
-  min-width: 1.15rem;
-  padding: 0.15rem 0.32rem;
-  text-align: center;
+  color: var(--color-cool);
+  font-family: var(--font-outlier);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
 }
 
 .as-inspector__body {
@@ -2346,28 +2381,25 @@ select:focus-visible {
 }
 
 .as-inspector-section h2 {
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   margin: 0;
+  text-wrap: balance;
 }
 
 .as-inspector-section > header span {
-  background: var(--as-iris-soft);
-  border-radius: var(--as-radius);
-  color: var(--as-subtle);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
-  font-size: 0.6rem;
-  min-width: 1.15rem;
-  padding: 0.13rem 0.35rem;
-  text-align: center;
+  color: var(--color-cool);
+  font-family: var(--font-outlier);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
 }
 
 .as-inspector-section__action {
   background: transparent;
   border: 0;
-  color: var(--as-iris);
+  color: var(--color-ink);
   cursor: pointer;
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   font-weight: 600;
   margin-left: auto;
   min-height: 2rem;
@@ -2389,7 +2421,7 @@ select:focus-visible {
 
 .as-inspector-row {
   display: grid;
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
   gap: 0.65rem;
   grid-template-columns: 5.6rem minmax(0, 1fr);
   margin: 0;
@@ -2397,7 +2429,7 @@ select:focus-visible {
 }
 
 .as-inspector-row dt {
-  color: var(--as-subtle);
+  color: var(--as-muted);
 }
 
 .as-inspector-row dd {
@@ -2408,20 +2440,20 @@ select:focus-visible {
 }
 
 .as-tag {
-  background: var(--as-iris-soft);
-  color: var(--as-iris);
+  background: var(--color-paper-3);
+  color: var(--color-ink-2);
   margin: 0 0.3rem 0.3rem 0;
 }
 
 .as-inspector-empty {
   color: var(--as-muted);
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
   margin: 0.25rem 0;
 }
 
 .as-inspector-error {
   color: var(--as-love);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   line-height: 1.45;
   margin: 0.25rem 0;
 }
@@ -2437,7 +2469,7 @@ select:focus-visible {
   background: color-mix(in oklab, var(--as-love) 18%, transparent);
   border-color: color-mix(in oklab, var(--as-love) 52%, var(--as-border));
   color: var(--as-love);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   font-weight: 600;
 }
 
@@ -2449,28 +2481,29 @@ select:focus-visible {
 
 .as-tag-editor input {
   background: var(--as-canvas);
-  border: 1px solid var(--as-border);
+  border: 1px solid var(--color-muted);
   border-radius: var(--as-radius);
   color: var(--as-text);
-  font: 0.78rem/1.4 "Atkinson Hyperlegible Mono", monospace;
+  font: 0.875rem/1.4 var(--font-body);
   min-height: 2.3rem;
-  outline: none;
+  outline: 2px solid transparent;
+  outline-offset: -3px;
   padding: 0.4rem 0.55rem;
   width: 100%;
 }
 
-.as-tag-editor input:focus {
-  border-color: var(--as-iris);
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--as-iris) 28%, transparent);
+.as-tag-editor input:focus-visible {
+  outline-color: var(--color-focus);
 }
 
 .as-tag-editor input:disabled {
+  cursor: not-allowed;
   opacity: 0.55;
 }
 
 .as-tag-editor > p {
   color: var(--as-muted);
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   line-height: 1.45;
   margin: 0;
 }
@@ -2485,7 +2518,7 @@ select:focus-visible {
 }
 
 .as-comments {
-  --as-comments-control-font-size: 0.7rem;
+  --as-comments-control-font-size: var(--text-xs);
   --as-comments-control-height: 1.75rem;
 
   display: grid;
@@ -2516,13 +2549,13 @@ select:focus-visible {
 }
 
 .as-comments__agents strong {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
 }
 
 .as-comments__agents span,
 .as-comments__agent-error {
   color: var(--as-muted);
-  font-size: 0.66rem;
+  font-size: var(--text-xs);
 }
 
 .as-comments__send-all {
@@ -2555,22 +2588,25 @@ select:focus-visible {
 
 .as-comments__filters {
   border-bottom: 1px solid var(--as-border);
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.25rem;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
   padding: 0.5rem 0.75rem;
 }
 
 .as-comments__filters .as-button {
-  font-size: 0.72rem;
+  flex: 1 0 auto;
+  font-size: var(--text-xs);
   min-height: 1.9rem;
   min-width: 0;
   padding: 0.2rem 0.4rem;
 }
 
+/* A filter is a view choice, not an action: neutral when pressed. */
 .as-comments__filters .as-button[aria-pressed="true"] {
-  background: var(--as-iris-soft);
-  color: var(--as-iris);
+  background: var(--as-hover);
+  color: var(--as-text);
+  font-weight: 600;
 }
 
 .as-comments__agents > div:last-child {
@@ -2591,7 +2627,7 @@ select:focus-visible {
 .as-comments__read-only {
   border-bottom: 1px solid var(--as-border);
   color: var(--as-subtle);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   line-height: 1.45;
   margin: 0;
   padding: 0.75rem;
@@ -2606,7 +2642,7 @@ select:focus-visible {
 .as-comments__error {
   border-bottom: 1px solid color-mix(in oklab, var(--as-love) 34%, transparent);
   color: var(--as-love);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   line-height: 1.45;
 }
 
@@ -2627,7 +2663,7 @@ select:focus-visible {
 
 .as-comment-composer__label {
   color: var(--as-text);
-  font-size: 0.76rem;
+  font-size: var(--text-xs);
   font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
@@ -2637,13 +2673,14 @@ select:focus-visible {
   background: color-mix(in oklab, var(--as-surface-raised) 62%, var(--as-surface));
   border: 1px solid color-mix(in oklab, var(--as-border) 78%, var(--as-text));
   border-radius: var(--as-radius);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   line-height: 1.5;
   min-height: 5rem;
   padding: 0.6rem 0.65rem;
+  outline: 2px solid transparent;
+  outline-offset: -3px;
   resize: vertical;
-  transition: background-color 140ms ease, border-color 140ms ease,
-    box-shadow 140ms ease;
+  transition: background-color var(--dur-micro) var(--ease-out);
 }
 
 .as-comments .as-comment-composer__input::placeholder {
@@ -2653,8 +2690,7 @@ select:focus-visible {
 
 .as-comments .as-comment-composer__input:focus-visible {
   background: var(--as-surface);
-  border-color: var(--as-iris);
-  box-shadow: 0 0 0 2px var(--as-iris-soft);
+  outline-color: var(--color-focus);
 }
 
 .as-comment-composer__actions {
@@ -2694,7 +2730,7 @@ select:focus-visible {
 
 .as-comment-card > header strong {
   flex: 1 1 auto;
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2704,11 +2740,9 @@ select:focus-visible {
 .as-comment-card > header span {
   background: var(--as-iris-soft);
   color: var(--as-iris);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
-  font-size: 0.58rem;
-  letter-spacing: 0.05em;
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
   padding: 0.15rem 0.35rem;
-  text-transform: uppercase;
 }
 
 .as-comment-card > header span[data-state="resolved"] {
@@ -2721,7 +2755,7 @@ select:focus-visible {
 }
 
 .as-comment-card__body > p {
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   line-height: 1.5;
   margin: 0.15rem 0 0.75rem;
   overflow-wrap: anywhere;
@@ -2729,10 +2763,6 @@ select:focus-visible {
 }
 
 @container (max-width: 20rem) {
-  .as-comments__filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .as-comments__agents {
     align-items: start;
   }
@@ -2752,7 +2782,7 @@ select:focus-visible {
 .as-comment-card__body > footer {
   color: var(--as-muted);
   display: grid;
-  font-size: 0.66rem;
+  font-size: var(--text-xs);
   gap: 0.55rem;
 }
 
@@ -2794,7 +2824,7 @@ select:focus-visible {
   background: transparent;
   border: 1px solid color-mix(in oklab, var(--as-border) 76%, transparent);
   color: color-mix(in oklab, var(--as-muted) 72%, var(--as-text));
-  font-size: 0.66rem;
+  font-size: var(--text-xs);
   min-height: 1.7rem;
   padding: 0.2rem 0.4rem;
   text-transform: none;
@@ -2813,7 +2843,7 @@ select:focus-visible {
 
 .as-comment-card__conversation-label {
   color: color-mix(in oklab, var(--as-muted) 72%, var(--as-text));
-  font-size: 0.66rem;
+  font-size: var(--text-xs);
   font-weight: 600;
   margin: 0 0 0.55rem;
 }
@@ -2841,16 +2871,16 @@ select:focus-visible {
 }
 
 .as-comment-replies header strong {
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
 }
 
 .as-comment-replies header time {
   color: color-mix(in oklab, var(--as-muted) 72%, var(--as-text));
-  font-size: 0.62rem;
+  font-size: var(--text-xs);
 }
 
 .as-comment-replies p {
-  font-size: 0.76rem;
+  font-size: var(--text-xs);
   line-height: 1.5;
   margin: 0;
   overflow-wrap: anywhere;
@@ -2884,18 +2914,18 @@ select:focus-visible {
 
 .as-comment-reply-composer label,
 .as-comment-replies label {
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
 }
 
 .as-comment-reply-composer textarea,
 .as-comment-replies textarea {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   min-height: 4.25rem;
 }
 
 @media (any-pointer: coarse) {
   .as-comments .as-comment-composer__input {
-    font-size: 1rem;
+    font-size: var(--text-lg);
   }
 }
 
@@ -2934,7 +2964,7 @@ select:focus-visible {
   align-items: center;
   background: var(--as-iris-soft);
   border-radius: var(--as-radius);
-  color: var(--as-iris);
+  color: var(--color-muted);
   display: flex;
   height: 1.75rem;
   justify-content: center;
@@ -2959,13 +2989,13 @@ select:focus-visible {
 }
 
 .as-file-list__identity code {
-  font-size: 0.76rem;
+  font-size: var(--text-xs);
 }
 
 .as-file-list__identity small,
 .as-file-list__size {
   color: var(--as-muted);
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
 }
 
 .as-version-list li + li {
@@ -3005,9 +3035,9 @@ select:focus-visible {
 .as-version-list__make-current {
   background: transparent;
   border: 0;
-  color: var(--as-iris);
+  color: var(--color-ink);
   cursor: pointer;
-  font-size: 0.68rem;
+  font-size: var(--text-xs);
   padding: 0.45rem;
 }
 
@@ -3021,7 +3051,6 @@ select:focus-visible {
 .as-confirm-dialog {
   background: var(--as-surface);
   border: 1px solid var(--as-border-strong);
-  box-shadow: 0 1.4rem 4rem color-mix(in oklab, black 30%, transparent);
   color: var(--as-text);
   left: 50%;
   max-width: 27rem;
@@ -3034,13 +3063,14 @@ select:focus-visible {
 }
 
 .as-confirm-dialog h2 {
-  font-size: 1rem;
+  font-size: var(--text-lg);
   margin: 0;
+  text-wrap: balance;
 }
 
 .as-confirm-dialog p {
   color: var(--as-muted);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   line-height: 1.55;
   margin: 0.65rem 0 0;
 }
@@ -3053,15 +3083,15 @@ select:focus-visible {
 }
 
 .as-version-list strong {
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   font-weight: 600;
 }
 
 .as-version-list time,
 .as-version-list__state {
   color: var(--as-muted);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
-  font-size: 0.65rem;
+  font-family: var(--font-outlier);
+  font-size: var(--text-xs);
 }
 
 .as-compare-form {
@@ -3076,9 +3106,7 @@ select:focus-visible {
 
 .as-compare-form label > span {
   color: var(--as-muted);
-  font-size: 0.66rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: var(--text-xs);
 }
 
 .as-compare-form select,
@@ -3088,7 +3116,7 @@ select:focus-visible {
   border: 1px solid var(--as-border);
   border-radius: var(--as-radius);
   color: var(--as-text);
-  font: 0.75rem/1.4 "Atkinson Hyperlegible Mono", monospace;
+  font: var(--text-xs)/1.4 var(--font-outlier);
   min-height: 2.25rem;
   padding: 0.4rem 0.55rem;
   width: 100%;
@@ -3121,7 +3149,7 @@ select:focus-visible {
 
 .as-activity-list strong,
 .as-comparison-list span {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   font-weight: 600;
 }
 
@@ -3129,7 +3157,7 @@ select:focus-visible {
 .as-activity-list code,
 .as-comparison-list code {
   color: var(--as-muted);
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   overflow-wrap: anywhere;
 }
 
@@ -3142,7 +3170,7 @@ select:focus-visible {
 .as-comparison-summary span {
   background: var(--as-iris-soft);
   color: var(--as-subtle);
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   padding: 0.2rem 0.4rem;
 }
 
@@ -3166,9 +3194,9 @@ select:focus-visible {
 
 .as-preview-welcome > span {
   align-items: center;
-  background: var(--as-iris-soft);
+  background: var(--color-paper-3);
   border-radius: var(--as-radius);
-  color: var(--as-iris);
+  color: var(--color-muted);
   display: flex;
   height: 3rem;
   justify-content: center;
@@ -3181,24 +3209,22 @@ select:focus-visible {
 }
 
 .as-preview-welcome p {
-  color: var(--as-iris);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
-  font-size: 0.65rem;
-  letter-spacing: 0.1em;
+  color: var(--color-muted);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
   margin: 1rem 0 0;
-  text-transform: uppercase;
 }
 
 .as-preview-welcome h2,
 .as-preview-state h3 {
-  font-size: 1rem;
+  font-size: var(--text-lg);
   margin: 0.65rem 0 0;
 }
 
 .as-preview-welcome small,
 .as-preview-state p {
   color: var(--as-subtle);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   line-height: 1.5;
   margin: 0.45rem 0 0;
 }
@@ -3264,13 +3290,13 @@ select:focus-visible {
 }
 
 .as-media-preview__loading strong {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .as-media-preview__loading small {
   color: var(--as-subtle);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
-  font-size: 0.68rem;
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3290,7 +3316,7 @@ select:focus-visible {
 
 .as-preview-state__details > div {
   display: grid;
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   gap: 0.75rem;
   grid-template-columns: 3rem minmax(0, 1fr);
   padding: 0.25rem 0;
@@ -3310,7 +3336,7 @@ select:focus-visible {
 }
 
 .as-preview-state__details code {
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  font-family: var(--font-outlier);
 }
 
 .as-preview-state__actions {
@@ -3332,12 +3358,12 @@ select:focus-visible {
 }
 
 .as-inline-state strong {
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
 }
 
 .as-inline-state p {
   color: var(--as-subtle);
-  font-size: 0.74rem;
+  font-size: var(--text-xs);
   line-height: 1.45;
   margin: 0.35rem 0 0;
 }
@@ -3370,7 +3396,7 @@ select:focus-visible {
   border-radius: var(--as-radius);
   color: var(--as-on-action);
   display: flex;
-  font-family: "Atkinson Hyperlegible Mono", monospace;
+  font-family: var(--font-display);
   font-weight: 600;
   height: 2.5rem;
   justify-content: center;
@@ -3378,23 +3404,22 @@ select:focus-visible {
 }
 
 .as-gate p {
-  color: var(--as-iris);
-  font-family: "Atkinson Hyperlegible Mono", monospace;
-  font-size: 0.7rem;
-  letter-spacing: 0.08em;
+  color: var(--color-muted);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
   margin: 1.25rem 0 0;
-  text-transform: uppercase;
 }
 
 .as-gate h1 {
   font-size: 1.4rem;
   margin: 0.55rem 0 0;
+  text-wrap: balance;
 }
 
 .as-gate small {
   color: var(--as-subtle);
   display: block;
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   line-height: 1.5;
   margin: 0.55rem 0 1.25rem;
 }
@@ -3413,16 +3438,16 @@ select:focus-visible {
     transform: translateX(0);
   }
 
-  .as-focus-controls__button:hover,
+  .as-focus-controls__button:not([data-active="true"]):hover,
   .as-focus-controls__collapse:hover,
   .as-focus-controls__restore:hover {
-    background: color-mix(in oklab, var(--as-surface-raised) 88%, transparent);
-    border-color: var(--as-subtle);
+    background: var(--as-hover);
+    color: var(--as-text);
   }
 
   .as-catalog__brand:hover,
   .as-icon-button:hover {
-    background: var(--as-iris-soft);
+    background: var(--as-hover);
     color: var(--as-text);
   }
 
@@ -3431,7 +3456,7 @@ select:focus-visible {
   }
 
   .as-button--primary:hover:not(:disabled) {
-    background: color-mix(in oklab, var(--as-action) 88%, white);
+    background: color-mix(in oklab, var(--as-action) 88%, var(--color-ink));
   }
 
   .as-button--secondary:hover:not(:disabled) {
@@ -3469,42 +3494,17 @@ body:has(.as-settings),
 #review-root:has(.as-settings) {
   height: auto;
   min-height: 100%;
-  overflow: auto;
+  /* The document scrolls; horizontal overflow is clipped, never hidden. */
+  overflow-x: clip;
+  overflow-y: visible;
 }
 
 .as-settings .font-heading {
   font-family: inherit;
 }
 
-body:has(.as-settings) [data-slot="button"],
-body:has(.as-settings) [data-slot="button-link"],
-body:has(.as-settings) [data-slot="dialog-trigger"] {
-  letter-spacing: 0.02em;
-  text-transform: none;
-  transition-duration: 140ms;
-  transition-property: background-color, border-color, color, opacity, transform;
-}
-
-body:has(.as-settings) [data-slot="button"]:active:not(:disabled),
-body:has(.as-settings) [data-slot="button-link"]:active,
-body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
-  transform: scale(0.96);
-  translate: none;
-}
-
-@media (pointer: fine) {
-  body:has(.as-settings) [data-slot="button"],
-  body:has(.as-settings) [data-slot="button-link"],
-  body:has(.as-settings) [data-slot="dialog-trigger"] {
-    font-size: 0.72rem;
-    height: 1.875rem;
-    min-height: 1.875rem;
-    padding-inline: 0.7rem;
-  }
-}
-
 .as-settings__header {
-  background: color-mix(in oklab, var(--as-surface) 96%, transparent);
+  background: var(--as-surface);
   border-bottom: 1px solid var(--as-border);
   position: sticky;
   top: 0;
@@ -3516,17 +3516,16 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
   display: flex;
   gap: 1rem;
   justify-content: space-between;
-  margin: 0 auto;
-  max-width: 82rem;
   min-height: var(--as-header-height);
-  padding: 0.35rem 1.25rem;
+  /* The mark sits where the workspace puts it, on every screen. */
+  padding: 0.35rem 0.55rem;
 }
 
 .as-settings__brand {
   align-items: center;
   color: inherit;
   display: inline-flex;
-  font-size: 0.9rem;
+  font-size: var(--text-md);
   font-weight: 600;
   gap: 0.55rem;
   text-decoration: none;
@@ -3534,8 +3533,10 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
 
 .as-settings__brand-mark {
   align-items: center;
-  background: var(--as-action);
-  color: var(--as-on-action);
+  background: var(--color-paper-2);
+  border: 1px solid var(--color-rule-2);
+  border-radius: var(--radius-pill);
+  color: var(--color-ink);
   display: inline-flex;
   height: 2rem;
   justify-content: center;
@@ -3553,49 +3554,52 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
   gap: 0.5rem;
 }
 
+/* One column under a tab row: six destinations do not earn a sidebar. */
 .as-settings__layout {
   display: grid;
-  gap: clamp(2rem, 5vw, 5rem);
-  grid-template-columns: 12rem minmax(0, 1fr);
+  gap: var(--space-lg);
+  grid-template-columns: minmax(0, 1fr);
   margin: 0 auto;
-  max-width: 82rem;
+  max-width: 72rem;
   min-width: 0;
-  padding: clamp(2rem, 5vw, 4.5rem) 1.25rem 5rem;
+  padding: var(--space-lg) var(--space-lg) var(--space-3xl);
 }
 
 .as-settings__nav {
-  align-self: start;
-  display: grid;
-  gap: 0.2rem;
-  position: sticky;
-  top: 6rem;
+  border-bottom: 1px solid var(--color-rule);
+  display: flex;
+  gap: var(--space-2xs);
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* The row scrolls when its tabs do not fit; the fading edge says so. */
+  mask-image: linear-gradient(to right, var(--color-ink) calc(100% - 1.5rem), transparent);
+  padding-right: 1.5rem;
 }
 
 .as-settings__nav > p {
-  color: var(--as-subtle);
-  font-family: "Atkinson Hyperlegible Mono", ui-monospace, monospace;
-  font-size: 0.68rem;
-  letter-spacing: 0.15em;
-  margin: 0 0 0.55rem;
-  text-transform: uppercase;
+  display: none;
 }
 
 .as-settings__nav > a {
-  border-left: 2px solid transparent;
-  color: var(--as-subtle);
-  font-size: 0.9rem;
-  padding: 0.5rem 0.7rem;
+  border-bottom: 2px solid transparent;
+  color: var(--color-muted);
+  flex: 0 0 auto;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  margin-bottom: -1px;
+  padding: var(--space-xs) var(--space-sm);
   text-decoration: none;
+  transition: color var(--dur-micro) var(--ease-out);
+  white-space: nowrap;
 }
 
-.as-settings__nav > a:hover,
-.as-settings__nav > a[data-active="true"] {
-  background: var(--as-hover);
-  color: var(--as-text);
+.as-settings__nav > a:hover {
+  color: var(--color-ink);
 }
 
 .as-settings__nav > a[data-active="true"] {
-  border-left-color: var(--as-iris);
+  border-bottom-color: var(--color-accent);
+  color: var(--color-ink);
 }
 
 .as-settings__content {
@@ -3659,7 +3663,7 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
 
 .as-public-links-table__artifact-link {
   color: var(--as-text);
-  font-size: 0.84rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   line-height: 1.25;
   min-width: 0;
@@ -3679,8 +3683,8 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
 .as-public-links-table__url {
   color: var(--as-settings-accent);
   display: block;
-  font-family: "Atkinson Hyperlegible Mono", ui-monospace, monospace;
-  font-size: 0.72rem;
+  font-family: var(--font-outlier);
+  font-size: var(--text-xs);
   line-height: 1.35;
   min-width: 0;
   overflow: hidden;
@@ -3690,7 +3694,7 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
 
 .as-public-links-table__meta {
   color: var(--as-subtle);
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   line-height: 1.35;
   margin: 0.2rem 0 0;
   overflow: hidden;
@@ -3799,7 +3803,7 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
   }
 
   .as-inspector {
-    box-shadow: -18px 0 40px rgb(0 0 0 / 18%);
+    box-shadow: none;
     max-width: 100vw;
   }
 }
@@ -3825,7 +3829,7 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
   }
 
   .as-search input {
-    font-size: 1rem;
+    font-size: var(--text-lg);
   }
 }
 
@@ -3839,41 +3843,28 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
   }
 
   .as-settings__layout {
-    display: block;
-    padding: 1.25rem 0.8rem 3rem;
-  }
-
-  .as-settings__nav {
-    display: flex;
-    margin-bottom: 1.5rem;
-    overflow-x: auto;
-    padding-bottom: 0.3rem;
-    position: static;
-  }
-
-  .as-settings__nav > p {
-    display: none;
-  }
-
-  .as-settings__nav > a {
-    border-bottom: 2px solid transparent;
-    border-left: 0;
-    flex: 0 0 auto;
-  }
-
-  .as-settings__nav > a[data-active="true"] {
-    border-bottom-color: var(--as-iris);
+    padding: var(--space-md) var(--space-md) var(--space-2xl);
   }
 
   .as-app {
     display: block;
   }
 
+  /* The open drawer sits over a scrim, not over a live page. */
+  .as-app[data-catalog-open="true"]:not([data-focus-mode="true"]) .as-workspace::after {
+    background: var(--color-scrim);
+    content: "";
+    inset: 0;
+    pointer-events: none;
+    position: absolute;
+    z-index: 10;
+  }
+
   .as-panel-assembly[data-side="left"] {
     bottom: 0;
-    box-shadow: 18px 0 40px rgb(0 0 0 / 18%);
+    box-shadow: none;
     left: 0;
-    max-width: 100vw;
+    max-width: 100%;
     position: absolute;
     top: 0;
     z-index: 11;
@@ -3881,6 +3872,18 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
 
   .as-workspace {
     height: 100%;
+  }
+
+  /* The catalog's animated width never outgrows a phone. */
+  .as-panel-assembly[data-side="left"] .as-panel-clip,
+  .as-panel-assembly[data-side="left"] .as-catalog {
+    max-width: 100%;
+  }
+
+  /* Full-width on a phone, the catalog has no width to drag, so its edge
+     handle's hit area stays inside the screen. */
+  .as-panel-assembly[data-side="left"] {
+    overflow-x: clip;
   }
 
   .as-preview-footer__metadata,
@@ -3965,8 +3968,7 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
     transition-property: opacity !important;
   }
 
-  .as-catalog-filter-popover,
-  .as-keyboard-shortcuts {
+  .as-catalog-filter-popover {
     transform: none !important;
     transition-property: opacity !important;
   }
@@ -3990,7 +3992,7 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
   align-items: flex-start;
   padding: 1rem;
   border: 1px solid var(--as-border);
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
@@ -4007,4 +4009,295 @@ body:has(.as-settings) [data-slot="dialog-trigger"]:active:not(:disabled) {
 .as-settings__webmcp small {
   color: var(--as-muted);
   line-height: 1.4;
+}
+
+/* Links read in ink and take the signal only on hover. */
+.as-inspector-section__action:hover,
+.as-version-list__make-current:hover,
+.as-catalog-filter-popover__clear:hover {
+  color: var(--color-accent);
+}
+
+/*
+ * Settings tables restack on a phone: each row becomes one block (what it
+ * names, its state and date, then its actions), so the action column never
+ * leaves the screen behind a sideways scroll.
+ */
+@media (max-width: 40rem) {
+  .as-stack-table,
+  .as-stack-table tbody,
+  .as-stack-table tr,
+  .as-stack-table td {
+    display: block;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .as-stack-table thead {
+    clip-path: inset(50%);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+
+  .as-stack-table tr {
+    display: grid;
+    gap: var(--space-xs);
+    padding: var(--space-sm) 0;
+  }
+
+  .as-stack-table td {
+    padding: 0;
+  }
+
+  .as-stack-table td .justify-end {
+    justify-content: flex-start;
+  }
+
+  /* More tabs than fit: the row scrolls, and its edge fades to say so. */
+  .as-settings__nav {
+    mask-image: linear-gradient(to right, var(--color-ink) calc(100% - 3rem), transparent);
+  }
+}
+
+.as-artifact-card__counts [data-open-count] {
+  background: var(--as-iris-soft);
+  color: var(--as-iris);
+  padding-inline: 0.35rem;
+}
+
+.as-comments__connect {
+  color: var(--as-subtle);
+  font-size: var(--text-sm);
+  margin: 0;
+}
+
+.as-comments__connect a {
+  color: var(--as-iris);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.as-comment-card:focus-visible {
+  outline: 2px solid var(--as-iris);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .as-comment-card:not([data-selected="true"], :hover, :focus-within) .as-comment-card__secondary,
+  .as-comment-card:not([data-selected="true"], :hover, :focus-within) .as-comment-reply-composer[data-expanded="false"] {
+    visibility: hidden;
+  }
+}
+
+.as-comments .as-send-to-agent__buttons,
+.as-comments .as-send-to-agent__primary {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.as-comments .as-send-to-agent__primary {
+  height: auto;
+  min-height: 1.7rem;
+  padding-block: 0.2rem;
+}
+
+.as-comments .as-send-to-agent__primary > .truncate {
+  overflow: visible;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.js .as-focus-controls__restore {
+  gap: 0.2rem;
+  padding-inline: 0.35rem;
+  width: auto;
+}
+
+.js .as-focus-controls-dock[data-collapsed="true"][data-initial-collapse="true"] .as-focus-controls__restore {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+.as-focus-controls__hint {
+  background: var(--as-surface-raised);
+  border: 1px solid var(--as-border);
+  border-radius: var(--radius-card);
+  color: var(--as-text);
+  font-size: var(--text-xs);
+  margin: 0;
+  padding: 0.35rem 0.55rem;
+  pointer-events: none;
+  position: absolute;
+  right: 2.65rem;
+  top: 1.05rem;
+  width: max-content;
+}
+
+.as-comparison-view,
+.as-comparison-preview__sync {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.as-comparison-view {
+  padding: 0.5rem 0.75rem;
+}
+
+.as-comparison-view [aria-pressed="true"] {
+  background: var(--as-hover);
+}
+
+.as-comparison-preview {
+  background: var(--as-surface);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  min-width: 0;
+}
+
+.as-comparison-preview__sync,
+.as-comparison-preview__pane > h2 {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+}
+
+.as-comparison-preview__panes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-height: 0;
+}
+
+.as-comparison-preview__pane {
+  border: 1px solid var(--as-border);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+}
+
+.as-comparison-preview__document {
+  display: grid;
+  min-height: 0;
+  position: relative;
+}
+
+.as-comparison-preview__document > p {
+  color: var(--as-subtle);
+  margin: 0;
+  padding: 0.75rem;
+}
+
+.as-folder-toolbar {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.35rem 0.75rem;
+  border-top: 1px solid var(--as-border);
+}
+
+.as-folder-breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+}
+
+.as-folder-breadcrumbs li {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.as-folder-breadcrumbs li + li::before {
+  content: "›" / "";
+  padding-inline: 0.3rem;
+  color: var(--as-muted);
+}
+
+.as-folder-breadcrumbs .as-button {
+  white-space: normal;
+  text-align: start;
+}
+
+.as-folder-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 2.75rem;
+}
+
+.as-folder-menu {
+  display: grid;
+  padding: 0.25rem;
+  border: 1px solid var(--as-border-strong);
+  border-radius: 0.5rem;
+  background: var(--as-surface-raised);
+  box-shadow: 0 0.5rem 1.5rem var(--as-border);
+}
+
+.as-folder-menu .as-button {
+  justify-content: start;
+}
+
+.as-folder-dialog {
+  max-height: 90dvh;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+
+.as-folder-picker__project select {
+  display: block;
+  background: var(--as-canvas);
+  border: 1px solid var(--as-border);
+  border-radius: var(--as-radius);
+  color: var(--as-text);
+  font: var(--text-xs)/1.4 var(--font-outlier);
+  min-height: 2.25rem;
+  padding: 0.4rem 0.55rem;
+  width: 100%;
+}
+
+.as-folder-picker {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.as-folder-picker__list {
+  display: grid;
+  gap: 0.25rem;
+  max-height: 26dvh;
+  overflow-y: auto;
+  padding: 0.25rem;
+}
+
+.as-folder-picker__list .as-button {
+  justify-content: space-between;
+  text-align: start;
+  white-space: normal;
+  min-height: 2.75rem;
+}
+
+.as-folder-picker__new {
+  display: flex;
+  align-items: end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.as-folder-picker__new label {
+  flex: 1 0 9rem;
 }

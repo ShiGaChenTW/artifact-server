@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ExternalLinkIcon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
 
 import {
   api,
   type ArtifactVersion,
 } from "@/api/client";
-import {formatBytes} from "@/lib/presentation";
+import {reviewPartsText} from "@/i18n/messages/review-parts";
+import {displayError} from "@/lib/presentation";
 import {
   frameMessageSchema,
   reviewProtocolVersion,
@@ -15,23 +14,49 @@ import {
   type ReviewAnnotation,
 } from "@/review-frame/protocol";
 
+import {DataPreview} from "./data-preview.tsx";
+import {markdownPreviewDocument} from "./markdown-document.ts";
+import {previewPresenter} from "./preview-kind.ts";
+import {
+  PreviewState,
+  TerminalPreviewState,
+  type PreviewActions,
+  type PreviewEntry,
+} from "./preview-states.tsx";
+import {TextPreview} from "./text-preview.tsx";
+import "./review-preview.css";
+
+const text = reviewPartsText.preview;
+
 interface PreviewDocument {
-  readonly baseHref: string;
+  readonly baseHref: string | null;
   readonly entryPath: string;
   readonly html: string;
 }
 
-interface PreviewEntry {
-  readonly mediaType: string;
-  readonly path: string;
-  readonly size: number;
-}
+/**
+ * How one fetched source becomes the document the review frame renders, given
+ * the exact version's content-host directory for that entry.
+ */
+type FrameDocumentRenderer = (
+  source: string,
+  documentBaseHref: string,
+) => {readonly baseHref: string | null; readonly html: string};
 
-interface PreviewActions {
-  readonly downloadUrl: string | null;
-  readonly onOpenRawArtifact: () => void;
-  readonly opening: boolean;
-}
+export const htmlFrameDocument: FrameDocumentRenderer = (source, documentBaseHref) => ({
+  baseHref: documentBaseHref,
+  html: source,
+});
+
+/**
+ * Markdown becomes a complete document with every URL already resolved, so the
+ * review frame passes it through untouched instead of re-parsing it to add a
+ * base URL.
+ */
+const markdownFrameDocument: FrameDocumentRenderer = (source, documentBaseHref) => ({
+  baseHref: null,
+  html: markdownPreviewDocument(source, documentBaseHref),
+});
 
 /** Render one exact immutable manifest entry in the Artifact Server preview surface. */
 export function ReviewPreview({
@@ -48,6 +73,7 @@ export function ReviewPreview({
   opening,
   projectId,
   readOnly,
+  selectionAttempt,
   selectedThreadId,
   selectedPath,
   version,
@@ -69,6 +95,7 @@ export function ReviewPreview({
   readonly opening: boolean;
   readonly projectId: string;
   readonly readOnly: boolean;
+  readonly selectionAttempt: number;
   readonly selectedThreadId: string | null;
   readonly selectedPath: string | null;
   readonly version: ArtifactVersion | null;
@@ -76,8 +103,8 @@ export function ReviewPreview({
   if (version === null) {
     return (
       <PreviewState
-        description="Reading the selected immutable version."
-        title="Loading preview"
+        description={text.loadingVersion}
+        title={text.loadingTitle}
       />
     );
   }
@@ -96,100 +123,347 @@ export function ReviewPreview({
     return (
       <TerminalPreviewState
         actions={commonActions}
-        description="This path is not part of the selected immutable version."
+        description={text.notFoundDescription}
         mediaType="unknown"
         path={path}
         size={null}
-        title="File not found"
+        title={text.notFoundTitle}
       />
     );
   }
-  const mediaType = mediaTypeEssence(entry.mediaType);
+  const presenter = previewPresenter(entry.mediaType);
   const identity = `${version.version.id}:${entry.path}`;
-  if (mediaType === "text/html") {
+  const versionId = version.version.id;
+  const frameProps = {
+    actions: commonActions,
+    annotateModeActive,
+    annotations,
+    artifactId,
+    entry,
+    isLight,
+    onAnnotateModeChange,
+    onSelectAnnotation,
+    onSubmitAnnotation,
+    onUnanchoredChange,
+    projectId,
+    readOnly,
+    selectionAttempt,
+    selectedThreadId,
+    version,
+  };
+  if (presenter.kind === "html") {
+    return <HtmlPreview {...frameProps} key={identity} renderDocument={htmlFrameDocument} />;
+  }
+  if (presenter.kind === "markdown") {
     return (
-      <HtmlPreview
+      <MarkdownPreview
+        artifactId={artifactId}
+        frameProps={frameProps}
+        key={identity}
+        projectId={projectId}
+      />
+    );
+  }
+  if (
+    presenter.kind === "image"
+    || presenter.kind === "video"
+    || presenter.kind === "audio"
+  ) {
+    return (
+      <NativeMediaPreview
         actions={commonActions}
-        annotateModeActive={annotateModeActive}
-        annotations={annotations}
+        artifactName={artifactName}
+        entry={entry}
+        key={identity}
+        kind={presenter.kind}
+        onProbe={() => api.probeVersionMedia(projectId, artifactId, versionId, entry.path)}
+        source={api.versionMediaUrl(projectId, artifactId, versionId, entry.path)}
+      />
+    );
+  }
+  if (presenter.kind === "pdf") {
+    return (
+      <PdfPreview
+        actions={commonActions}
+        artifactId={artifactId}
+        artifactName={artifactName}
+        entry={entry}
+        key={identity}
+        projectId={projectId}
+        versionId={versionId}
+      />
+    );
+  }
+  if (presenter.kind === "text") {
+    return (
+      <EntryTextPreview
+        actions={commonActions}
         artifactId={artifactId}
         entry={entry}
-        isLight={isLight}
         key={identity}
-        onAnnotateModeChange={onAnnotateModeChange}
-        onSelectAnnotation={onSelectAnnotation}
-        onSubmitAnnotation={onSubmitAnnotation}
-        onUnanchoredChange={onUnanchoredChange}
         projectId={projectId}
-        readOnly={readOnly}
-        selectedThreadId={selectedThreadId}
-        version={version}
+        versionId={versionId}
       />
     );
   }
-  if (mediaType.startsWith("image/")) {
+  if (presenter.kind === "data") {
     return (
-      <NativeMediaPreview
+      <EntryDataPreview
         actions={commonActions}
-        artifactName={artifactName}
+        artifactId={artifactId}
         entry={entry}
+        format={presenter.format}
         key={identity}
-        kind="image"
-        onProbe={() => api.probeVersionMedia(
-          projectId,
-          artifactId,
-          version.version.id,
-          entry.path,
-        )}
-        source={api.versionMediaUrl(
-          projectId,
-          artifactId,
-          version.version.id,
-          entry.path,
-        )}
-      />
-    );
-  }
-  if (mediaType.startsWith("video/")) {
-    return (
-      <NativeMediaPreview
-        actions={commonActions}
-        artifactName={artifactName}
-        entry={entry}
-        key={identity}
-        kind="video"
-        onProbe={() => api.probeVersionMedia(
-          projectId,
-          artifactId,
-          version.version.id,
-          entry.path,
-        )}
-        source={api.versionMediaUrl(
-          projectId,
-          artifactId,
-          version.version.id,
-          entry.path,
-        )}
+        projectId={projectId}
+        versionId={versionId}
       />
     );
   }
   return (
     <TerminalPreviewState
       actions={commonActions}
-      description="Artifact Server does not preview this declared media type."
+      description={text.unsupportedDescription}
       mediaType={entry.mediaType}
       path={entry.path}
       size={entry.size}
-      title="Preview not supported"
+      title={text.unsupportedTitle}
     />
   );
 }
 
-function HtmlPreview({
+/**
+ * One bounded reader of an entry's leading bytes, stable for the selection so
+ * a presenter's load effect runs once per entry and retry.
+ */
+function useEntryBytes(
+  projectId: string,
+  artifactId: string,
+  versionId: string,
+  path: string,
+): (byteLimit: number | null) => Promise<Uint8Array> {
+  return useCallback(
+    (byteLimit: number | null) =>
+      api.versionFileBytes(projectId, artifactId, versionId, path, byteLimit),
+    [artifactId, path, projectId, versionId],
+  );
+}
+
+function EntryTextPreview({
+  actions,
+  artifactId,
+  entry,
+  projectId,
+  versionId,
+}: {
+  readonly actions: PreviewActions;
+  readonly artifactId: string;
+  readonly entry: PreviewEntry;
+  readonly projectId: string;
+  readonly versionId: string;
+}) {
+  const readBytes = useEntryBytes(projectId, artifactId, versionId, entry.path);
+  return <TextPreview actions={actions} entry={entry} readBytes={readBytes} />;
+}
+
+function EntryDataPreview({
+  actions,
+  artifactId,
+  entry,
+  format,
+  projectId,
+  versionId,
+}: {
+  readonly actions: PreviewActions;
+  readonly artifactId: string;
+  readonly entry: PreviewEntry;
+  readonly format: Parameters<typeof DataPreview>[0]["format"];
+  readonly projectId: string;
+  readonly versionId: string;
+}) {
+  const readBytes = useEntryBytes(projectId, artifactId, versionId, entry.path);
+  return (
+    <DataPreview actions={actions} entry={entry} format={format} readBytes={readBytes} />
+  );
+}
+
+type FrameProps = Omit<Parameters<typeof HtmlPreview>[0], "actions" | "renderDocument"> & {
+  readonly actions: PreviewActions;
+};
+
+/**
+ * Markdown renders inside the same opaque-origin review sandbox as HTML, with
+ * a toggle to the file's raw source as plain text.
+ */
+function MarkdownPreview({
+  artifactId,
+  frameProps,
+  projectId,
+}: {
+  readonly artifactId: string;
+  readonly frameProps: FrameProps;
+  readonly projectId: string;
+}) {
+  const [view, setView] = useState<"rendered" | "source">("rendered");
+  const readBytes = useEntryBytes(
+    projectId,
+    artifactId,
+    frameProps.version.version.id,
+    frameProps.entry.path,
+  );
+  return (
+    <div className="as-markdown-preview" data-view={view}>
+      <div
+        aria-label={text.markdownViewLabel}
+        className="as-markdown-preview__bar"
+        role="group"
+      >
+        <button
+          aria-pressed={view === "rendered"}
+          className="as-button"
+          onClick={() => setView("rendered")}
+          type="button"
+        >
+          {text.markdownRendered}
+        </button>
+        <button
+          aria-pressed={view === "source"}
+          className="as-button"
+          onClick={() => setView("source")}
+          type="button"
+        >
+          {text.markdownSource}
+        </button>
+      </div>
+      <div className="as-markdown-preview__body">
+        {view === "rendered" ? (
+          <HtmlPreview {...frameProps} renderDocument={markdownFrameDocument} />
+        ) : (
+          <TextPreview actions={frameProps.actions} entry={frameProps.entry} readBytes={readBytes} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** PDF files begin with `%PDF-` within their first 1,024 bytes. */
+const pdfHeaderWindow = 1024;
+const pdfSignature = [0x25, 0x50, 0x44, 0x46, 0x2d];
+
+function startsLikePdf(bytes: Uint8Array): boolean {
+  for (let offset = 0; offset + pdfSignature.length <= bytes.length; offset += 1) {
+    if (pdfSignature.every((value, index) => bytes[offset + index] === value)) return true;
+  }
+  return false;
+}
+
+type PdfLoad =
+  | {readonly state: "loading"}
+  | {readonly description: string; readonly retryable: boolean; readonly state: "failed"}
+  | {readonly source: string; readonly state: "ready"};
+
+/**
+ * The browser's own PDF viewer, framed from the exact version's preview-lease
+ * host on the content domain. The application origin never receives the PDF
+ * typed as a document; it reads only the leading bytes as data to refuse a
+ * file that is not a PDF before framing anything.
+ */
+function PdfPreview({
+  actions,
+  artifactId,
+  artifactName,
+  entry,
+  projectId,
+  versionId,
+}: {
+  readonly actions: PreviewActions;
+  readonly artifactId: string;
+  readonly artifactName: string;
+  readonly entry: PreviewEntry;
+  readonly projectId: string;
+  readonly versionId: string;
+}) {
+  const [load, setLoad] = useState<PdfLoad>({state: "loading"});
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let current = true;
+    setLoad({state: "loading"});
+    void (async () => {
+      try {
+        const [head, lease] = await Promise.all([
+          api.versionFileBytes(
+            projectId,
+            artifactId,
+            versionId,
+            entry.path,
+            entry.size > pdfHeaderWindow ? pdfHeaderWindow : null,
+          ),
+          api.previewLease(projectId, artifactId, versionId),
+        ]);
+        if (!current) return;
+        if (lease.versionId !== versionId) {
+          setLoad({description: text.leaseMismatch, retryable: true, state: "failed"});
+          return;
+        }
+        if (!startsLikePdf(head)) {
+          setLoad({description: text.pdfUnavailableDescription, retryable: false, state: "failed"});
+          return;
+        }
+        setLoad({source: entryContentUrl(lease.baseUrl, entry.path), state: "ready"});
+      } catch (cause) {
+        if (!current) return;
+        setLoad({
+          description: displayError(cause instanceof Error ? cause : new Error(text.failed)),
+          retryable: true,
+          state: "failed",
+        });
+      }
+    })();
+    return () => {
+      current = false;
+    };
+  }, [artifactId, attempt, entry.path, entry.size, projectId, versionId]);
+
+  if (load.state === "loading") {
+    return <PreviewState description={text.loadingPath(entry.path)} title={text.loadingTitle} />;
+  }
+  if (load.state === "failed") {
+    return (
+      <TerminalPreviewState
+        actions={actions}
+        description={load.description}
+        mediaType={entry.mediaType}
+        onRetry={load.retryable ? () => setAttempt((value) => value + 1) : undefined}
+        path={entry.path}
+        size={entry.size}
+        title={text.pdfUnavailableTitle}
+      />
+    );
+  }
+  return (
+    <iframe
+      className="as-artifact-frame as-pdf-frame"
+      referrerPolicy="no-referrer"
+      src={load.source}
+      title={text.mediaName(artifactName, entry.path)}
+    />
+  );
+}
+
+/** The content-host URL of one manifest path under a version base URL. */
+function entryContentUrl(versionBaseUrl: string, entryPath: string): string {
+  return new URL(
+    entryPath.split("/").map(encodeURIComponent).join("/"),
+    versionBaseUrl,
+  ).toString();
+}
+
+export function HtmlPreview({
   actions,
   annotateModeActive,
   annotations,
   artifactId,
+  comparison,
   entry,
   isLight,
   onAnnotateModeChange,
@@ -198,13 +472,20 @@ function HtmlPreview({
   onUnanchoredChange,
   projectId,
   readOnly,
+  renderDocument,
+  selectionAttempt = 0,
   selectedThreadId,
   version,
 }: {
-  readonly actions: PreviewActions;
+  readonly actions?: PreviewActions;
   readonly annotateModeActive: boolean;
   readonly annotations: readonly ReviewAnnotation[];
   readonly artifactId: string;
+  readonly comparison?: {
+    readonly onScroll: (progress: number) => void;
+    readonly position: {readonly progress: number} | null;
+    readonly title: string;
+  };
   readonly entry: PreviewEntry;
   readonly isLight: boolean;
   readonly onAnnotateModeChange: (active: boolean) => void;
@@ -217,6 +498,8 @@ function HtmlPreview({
   readonly onUnanchoredChange: (threadIds: readonly string[]) => void;
   readonly projectId: string;
   readonly readOnly: boolean;
+  readonly renderDocument: FrameDocumentRenderer;
+  readonly selectionAttempt?: number;
   readonly selectedThreadId: string | null;
   readonly version: ArtifactVersion;
 }) {
@@ -237,7 +520,7 @@ function HtmlPreview({
     let current = true;
     void (async () => {
       try {
-        const [html, resolvedBase] = await Promise.all([
+        const [source, resolvedBase] = await Promise.all([
           api.versionFile(
             projectId,
             artifactId,
@@ -247,23 +530,27 @@ function HtmlPreview({
           api.previewLease(projectId, artifactId, version.version.id).then(
             (lease) => {
               if (lease.versionId !== version.version.id) {
-                throw new Error("The preview lease resolved a different version.");
+                throw new Error(text.leaseMismatch);
               }
               return lease.baseUrl;
             },
           ),
         ]);
         if (current) {
+          const rendered = renderDocument(
+            source,
+            documentBaseUrl(resolvedBase, entry.path),
+          );
           setPreviewDocument({
-            baseHref: documentBaseUrl(resolvedBase, entry.path),
+            baseHref: rendered.baseHref,
             entryPath: entry.path,
-            html,
+            html: rendered.html,
           });
         }
       } catch (cause) {
         if (!current) return;
         setError(
-          cause instanceof Error ? cause : new Error("Artifact preview failed."),
+          cause instanceof Error ? cause : new Error(text.failed),
         );
       } finally {
         if (current) setLoading(false);
@@ -272,7 +559,7 @@ function HtmlPreview({
     return () => {
       current = false;
     };
-  }, [artifactId, entry.path, projectId, version.version.id]);
+  }, [artifactId, entry.path, projectId, renderDocument, version.version.id]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent<unknown>): void => {
@@ -285,6 +572,11 @@ function HtmlPreview({
         setFrameReady(true);
         return;
       }
+      if (message.type === "as-comparison-scrolled") {
+        comparison?.onScroll(message.progress);
+        return;
+      }
+      if (comparison !== undefined) return;
       if (message.type === "as-review-select") {
         onSelectAnnotation(message.threadId);
         return;
@@ -312,6 +604,7 @@ function HtmlPreview({
     return () => window.removeEventListener("message", onMessage);
   }, [
     annotations,
+    comparison,
     entry.path,
     onAnnotateModeChange,
     onSelectAnnotation,
@@ -327,6 +620,7 @@ function HtmlPreview({
       annotateModeActive,
       annotations: [...annotations],
       baseHref: previewDocument.baseHref,
+      comparison: comparison !== undefined,
       entryPath: previewDocument.entryPath,
       html: previewDocument.html,
       isLight,
@@ -335,7 +629,7 @@ function HtmlPreview({
       type: "as-review-init",
       v: reviewProtocolVersion,
     });
-  }, [annotateModeActive, annotations, frameReady, isLight, postToFrame, previewDocument, readOnly]);
+  }, [annotateModeActive, annotations, comparison, frameReady, isLight, postToFrame, previewDocument, readOnly]);
 
   useEffect(() => {
     if (!initialisedRef.current) return;
@@ -375,25 +669,38 @@ function HtmlPreview({
       type: "as-review-focus",
       v: reviewProtocolVersion,
     });
-  }, [postToFrame, selectedThreadId]);
+  }, [frameReady, postToFrame, selectionAttempt, selectedThreadId]);
+
+  const comparisonPosition = comparison?.position ?? null;
+  useEffect(() => {
+    if (!frameReady || comparisonPosition === null) return;
+    postToFrame({
+      progress: comparisonPosition.progress,
+      type: "as-review-scroll",
+      v: reviewProtocolVersion,
+    });
+  }, [comparisonPosition, frameReady, postToFrame]);
 
   if (loading) {
     return (
       <PreviewState
-        description={`Reading ${entry.path} from the selected version.`}
-        title="Loading preview"
+        description={text.loadingPath(entry.path)}
+        title={text.loadingTitle}
       />
     );
   }
   if (error !== null) {
+    if (actions === undefined) {
+      return <PreviewState description={displayError(error)} title={text.unavailableTitle} />;
+    }
     return (
       <TerminalPreviewState
         actions={actions}
-        description={error.message}
+        description={displayError(error)}
         mediaType={entry.mediaType}
         path={entry.path}
         size={entry.size}
-        title="Preview unavailable"
+        title={text.unavailableTitle}
       />
     );
   }
@@ -402,7 +709,7 @@ function HtmlPreview({
       className="as-artifact-frame"
       ref={frameRef}
       src="/review-frame"
-      title={`${version.version.artifactId} version ${version.version.number}`}
+      title={comparison?.title ?? text.frameTitle(version.version.artifactId, version.version.number)}
     />
   );
 }
@@ -426,7 +733,7 @@ function NativeMediaPreview({
   readonly actions: PreviewActions;
   readonly artifactName: string;
   readonly entry: PreviewEntry;
-  readonly kind: "image" | "video";
+  readonly kind: "audio" | "image" | "video";
   readonly onProbe: () => Promise<void>;
   readonly source: string;
 }) {
@@ -434,15 +741,18 @@ function NativeMediaPreview({
   const [retry, setRetry] = useState(0);
   const mountedRef = useRef(true);
   const probeInFlightRef = useRef(false);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const accessibleName = `${artifactName} — ${entry.path}`;
+  const playerRef = useRef<HTMLMediaElement | null>(null);
+  const attachPlayer = useCallback((element: HTMLMediaElement | null): void => {
+    playerRef.current = element;
+  }, []);
+  const accessibleName = text.mediaName(artifactName, entry.path);
 
   useEffect(() => () => {
     mountedRef.current = false;
-    const video = videoRef.current;
-    if (video !== null) {
-      video.removeAttribute("src");
-      video.load();
+    const player = playerRef.current;
+    if (player !== null) {
+      player.removeAttribute("src");
+      player.load();
     }
   }, []);
 
@@ -466,7 +776,7 @@ function NativeMediaPreview({
     return (
       <TerminalPreviewState
         actions={actions}
-        description={`This browser could not decode or deliver the declared ${entry.mediaType} file.`}
+        description={text.mediaUnavailableDescription(entry.mediaType)}
         mediaType={entry.mediaType}
         onRetry={() => {
           setRetry((current) => current + 1);
@@ -474,7 +784,7 @@ function NativeMediaPreview({
         }}
         path={entry.path}
         size={entry.size}
-        title={`${kind === "image" ? "Image" : "Video"} preview unavailable`}
+        title={text.mediaUnavailableTitle(kind)}
       />
     );
   }
@@ -489,7 +799,7 @@ function NativeMediaPreview({
           onLoad={() => setStatus("ready")}
           src={mediaSource}
         />
-      ) : (
+      ) : kind === "video" ? (
         <video
           aria-label={accessibleName}
           controls
@@ -498,23 +808,30 @@ function NativeMediaPreview({
           onLoadedMetadata={() => setStatus("ready")}
           playsInline
           preload="metadata"
-          ref={videoRef}
+          ref={attachPlayer}
+          src={mediaSource}
+        />
+      ) : (
+        <audio
+          aria-label={accessibleName}
+          controls
+          key={retry}
+          onError={handleMediaError}
+          onLoadedMetadata={() => setStatus("ready")}
+          preload="metadata"
+          ref={attachPlayer}
           src={mediaSource}
         />
       )}
       {status === "loading" ? (
         <div className="as-media-preview__loading" role="status">
           <span aria-hidden="true" className="as-preview-state__mark" />
-          <strong>Loading preview</strong>
+          <strong>{text.loadingTitle}</strong>
           <small>{entry.path}</small>
         </div>
       ) : null}
     </div>
   );
-}
-
-function mediaTypeEssence(mediaType: string): string {
-  return mediaType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
 }
 
 function reviewThemeTokens() {
@@ -531,8 +848,8 @@ function reviewThemeTokens() {
     "--destructive": value("--as-love"),
     "--destructive-foreground": value("--as-canvas"),
     "--focus-highlight": value("--as-iris-soft"),
-    "--font-mono": '"Atkinson Hyperlegible Mono", ui-monospace, monospace',
-    "--font-sans": '"Atkinson Hyperlegible Next", ui-sans-serif, sans-serif',
+    "--font-mono": '"Geist Mono Variable", ui-monospace, monospace',
+    "--font-sans": '"Geist Variable", "PingFang TC", "Noto Sans TC", ui-sans-serif, sans-serif',
     "--foreground": value("--as-text"),
     "--input": value("--as-border"),
     "--muted": value("--as-surface-raised"),
@@ -541,7 +858,7 @@ function reviewThemeTokens() {
     "--popover-foreground": value("--as-text"),
     "--primary": value("--as-action"),
     "--primary-foreground": value("--as-on-action"),
-    "--radius": "0.75rem",
+    "--radius": "0.5rem",
     "--ring": value("--as-iris"),
     "--secondary": value("--as-foam"),
     "--secondary-foreground": value("--as-canvas"),
@@ -550,70 +867,4 @@ function reviewThemeTokens() {
     "--warning": value("--as-gold"),
     "--warning-foreground": value("--as-canvas"),
   };
-}
-
-function TerminalPreviewState({
-  actions,
-  description,
-  mediaType,
-  onRetry,
-  path,
-  size,
-  title,
-}: {
-  readonly actions: PreviewActions;
-  readonly description: string;
-  readonly mediaType: string;
-  readonly onRetry?: () => void;
-  readonly path: string;
-  readonly size: number | null;
-  readonly title: string;
-}) {
-  return (
-    <div className="as-preview-state as-preview-state--terminal" data-tone="error" role="alert">
-      <span aria-hidden="true" className="as-preview-state__mark" />
-      <h3>{title}</h3>
-      <p>{description}</p>
-      <dl className="as-preview-state__details">
-        <div><dt>Path</dt><dd><code>{path}</code></dd></div>
-        <div><dt>Type</dt><dd><code>{mediaType}</code></dd></div>
-        {size === null ? null : (
-          <div><dt>Size</dt><dd>{formatBytes(size)}</dd></div>
-        )}
-      </dl>
-      <div className="as-preview-state__actions">
-        {onRetry === undefined ? null : (
-          <button className="as-button" onClick={onRetry} type="button">Retry preview</button>
-        )}
-        <button
-          className="as-button as-button--primary"
-          disabled={actions.opening}
-          onClick={actions.onOpenRawArtifact}
-          type="button"
-        >
-          <HugeiconsIcon aria-hidden="true" icon={ExternalLinkIcon} strokeWidth={1.8} />
-          {actions.opening ? "Opening…" : "Open raw artifact"}
-        </button>
-        {actions.downloadUrl === null ? null : (
-          <a className="as-button" download href={actions.downloadUrl}>Download file</a>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function PreviewState({
-  description,
-  title,
-}: {
-  readonly description: string;
-  readonly title: string;
-}) {
-  return (
-    <div className="as-preview-state" role="status">
-      <span aria-hidden="true" className="as-preview-state__mark" />
-      <h3>{title}</h3>
-      <p>{description}</p>
-    </div>
-  );
 }

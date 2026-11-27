@@ -38,7 +38,13 @@ const artifactListSchema = z.object({
 const sessionSchema = z.object({
   capabilities: z.object({
     gitHistory: z.unknown(),
+    folders: z.boolean(),
+    crossProjectMove: z.boolean(),
+    trash: z.boolean(),
+    fileOverview: z.boolean(),
+    batch: z.boolean(),
     linkedArtifacts: z.boolean(),
+    linkedFolders: z.boolean(),
   }).strict(),
 }).loose();
 

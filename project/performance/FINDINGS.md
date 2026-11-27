@@ -31,6 +31,97 @@ utility without addressing a confirmed failure. External-storage and managed
 provider capacity must be measured separately before Kubernetes or hosted
 resource defaults claim the same 100-user envelope.
 
+## File overview baseline (FOV-003)
+
+`pnpm perf:file-overview` seeds a temporary compact database with the file
+management spec's section 13 data set (100,000 artifacts across 20 projects and
+2,000 folders, one leaf folder holding 10,000 artifacts, and one artifact with
+200 versions and 500 comment threads) and times the storage paths behind the
+Files page and folder operations with 5 warm-up and 40 measured iterations
+(5 for folder trash, 20 for the cross-project move). It writes
+`project/evidence/file-overview-baseline.json`.
+
+Machine: Apple M5 Max, Node.js 24.15, local APFS storage, November 24, 2026.
+
+| Operation | p50 | p95 | Section 13 budget (p95) |
+| --- | ---: | ---: | ---: |
+| `listFiles`, first page of 100, default sort, no filter | 2.1 ms | 3.2 ms | 150 ms |
+| `listFiles` with kind + tag + updated-time filters | 29.2 ms | 32.2 ms | 200 ms |
+| `listFolder`, one page of a 10,000-artifact folder | 0.4 ms | 0.6 ms | 50 ms |
+| Rename the 10,000-artifact folder | 0.1 ms | 0.2 ms | 20 ms |
+| Move the 200-version, 500-thread artifact across projects | 16.7 ms | 18.3 ms | 250 ms |
+| Trash the 10,000-artifact folder subtree (one transaction) | 390 ms | 415 ms | 2 s |
+| 100 sequential per-item move transactions | 19.0 ms | 19.9 ms | 1.5 s |
+| `fileFacets`, no filter | 253 ms | 260 ms | none |
+
+Every budgeted path is inside its budget. Schema 16 indexes the denormalized
+current-version columns, so a page never sorts or joins version tables per row;
+a folder rename is one row; the cross-project move rewrites child rows by
+artifact ID. Folder trash is the slowest budgeted write at about a fifth of its
+budget, because it stamps every artifact in the subtree inside one transaction.
+The open risk is facets: an unfiltered facet read scans every live artifact
+once for kind and project counts and once more for tags, about 255 ms at
+100,000 artifacts. The Files page requests facets beside every page, so a
+filter change waits on that scan. If it becomes noticeable, cache facets per
+filter for a short time or drop tag facets from the unfiltered view.
+
+## Linked-folder scan baseline (FOV-003)
+
+`pnpm perf:linked-folder-scan` links 20,000 files in 20 directories on a real
+local server. Each of seven standalone runs compares five warm full scans with
+paired idle windows using one sequential client. The client reads the current
+exact version four times per staged publication. Both windows time the same
+operations, including all three publication requests. The machine was an Apple M5 Max
+running Node.js 24.15.0 on local APFS (November 24, 2026).
+
+| Run | Read p95, idle → scan | Publish p95, idle → scan | Longest warm scan |
+| --- | ---: | ---: | ---: |
+| 1 | 0.711 → 0.642 ms (−9.70%) | 23.106 → 23.826 ms (+3.12%) | 1.407 s |
+| 2 | 0.654 → 0.632 ms (−3.36%) | 22.574 → 24.473 ms (+8.41%) | 1.432 s |
+| 3 | 0.696 → 0.653 ms (−6.18%) | 22.731 → 23.886 ms (+5.08%) | 1.406 s |
+| 4 | 0.653 → 0.622 ms (−4.75%) | 22.960 → 24.142 ms (+5.15%) | 1.384 s |
+| 5 | 0.646 → 0.643 ms (−0.46%) | 22.510 → 23.980 ms (+6.53%) | 1.426 s |
+| 6 | 0.686 → 0.674 ms (−1.75%) | 23.569 → 24.326 ms (+3.21%) | 1.406 s |
+| 7 | 0.852 → 0.900 ms (+5.63%) | 23.524 → 25.116 ms (+6.77%) | 1.562 s |
+| Section 13 budget | +10% | +10% | 5 s |
+
+The earlier baseline was 22.2 → 30.6 ms (+38%) for publication. Two
+unmodified runs in this worktree measured 27.103 → 34.150 ms (+26.00%) and
+22.746 → 31.675 ms (+39.26%). A synchronous 2,000-entry page transaction
+blocked the shared event loop, with occasional additional time spent
+checkpointing the WAL. Set-based updates alone brought a 2,000-entry run to
++18%. Using that SQL with 500- or 250-entry pages on the main connection still
+produced runs beyond +10%.
+
+The local runtime now sends each page of at most 250 entries to one worker.
+Its SQLite connection uses the same WAL database, foreign-key enforcement,
+full synchronization, and five-second busy timeout as the catalog. The worker
+commits before acknowledging the page. An unchanged, untracked file with no
+active source binding takes one set-based generation update alongside the
+other matching entries. The remaining observations use the existing ordered
+reconciliation in the same transaction. SQLite serializes competing writes,
+and restart reconciliation still re-observes the directory before pruning.
+The LFD-002 failure test forces the second insert in a page to abort and
+checks that both entries are absent until a successful rescan after restart.
+A compiled-server probe interrupted a 300-file scan with SIGKILL after the
+first page committed. Restart completed the inventory and preserved all 250
+committed entry IDs.
+
+In each of the seven runs an independent connection acquired the write lock
+without waiting at all 82 boundaries of an unmeasured warm scan. It observed
+80 distinct partial inventory counts and all 20,000 generation stamps, with
+at most 250 new stamps between consecutive boundaries. This observation is
+separate from the timed traffic windows.
+
+`tests/smoke/file-management-performance.test.ts` checks the transaction
+boundaries and the gross full-scan budget during ordinary runs. The relative
+p95 checks run in isolation with
+`ARTIFACT_SERVER_CHECK_LINKED_SCAN_LATENCY=1 pnpm exec vitest run tests/smoke/file-management-performance.test.ts`.
+Section 13 defines a controlled local baseline. Shared CI timing and other
+parallel test files can move an idle p95 enough to misclassify a small
+absolute change, so the ordinary smoke run leaves the relative threshold to
+the isolated test and the repeated baseline above.
+
 ## Measured baseline
 
 Machine: Apple M5 Max, Node.js 24.15.0, local APFS storage.

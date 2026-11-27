@@ -1,3 +1,10 @@
+import {type ArtifactPlacementService, type FolderService, folderPlacementLayer} from "../application/folders.js";
+import type {
+  ArtifactPlacementRepository, FileCatalogRepository, FolderLinkRepository, FolderRepository, TrashRepository,
+} from "../core/ports.js";
+import {type TrashService, trashLayer} from "../application/trash.js";
+import {type FileCatalogService, fileCatalogLayer} from "../application/file-catalog.js";
+import {type BatchService, batchLayer} from "../application/batch.js";
 import {createHash, randomUUID, timingSafeEqual} from "node:crypto";
 
 import { DateTime, Effect, Layer, Redacted } from "effect";
@@ -55,6 +62,11 @@ import {
   type LinkedSourceEngineOperations,
   LinkedArtifactService,
 } from "../application/linked-artifacts.js";
+import {
+  disabledLinkedFolderLayer,
+  type LinkedDirectoryEngineOperations,
+  LinkedFolderService,
+} from "../application/linked-folders.js";
 import {
   type PublishArtifactDependencies,
   PublishArtifactService,
@@ -156,6 +168,11 @@ export interface ApplicationAdapters {
   readonly blobs: BlobStore;
   readonly bootstrapAdministratorEmail: string;
   readonly clock: Clock;
+  readonly folders?: FolderRepository & ArtifactPlacementRepository;
+  /** Present only where tombstones are recoverable (ADR 0030). */
+  readonly trash?: TrashRepository;
+  /** Present only where the cross-project file overview is offered (FOV-001). */
+  readonly fileCatalog?: FileCatalogRepository;
   readonly externalApiBearerVerifier: BearerCredentialVerifier | null;
   readonly externalMcpBearerVerifier: BearerCredentialVerifier | null;
   readonly externalMcpOAuthVerifier: ExternalMcpBearerVerifier | null;
@@ -179,6 +196,12 @@ export interface ApplicationAdapters {
    * stable capability-unavailable shape.
    */
   readonly linked?: LinkedApplicationAdapters;
+  /**
+   * Linked-folder adapters, present only on a local deployment with linked
+   * files and folders on. Absent, the disabled layer answers
+   * capability-unavailable.
+   */
+  readonly linkedFolders?: LinkedFolderApplicationAdapters;
   /**
    * Dashboard insights queries, present only where the persistence adapter
    * implements them. Absent, every runtime still provides the insights
@@ -209,6 +232,12 @@ export interface LinkedApplicationAdapters {
   readonly engine: LinkedSourceEngineOperations;
 }
 
+/** Node-only linked-folder adapters supplied by the local deployment. */
+export interface LinkedFolderApplicationAdapters {
+  readonly directories: LinkedDirectoryEngineOperations;
+  readonly repository: FolderLinkRepository;
+}
+
 /** Promise-shaped dashboard queries implemented by a persistence adapter. */
 export interface ArtifactInsightsStore {
   readonly listActivity: (
@@ -234,6 +263,11 @@ export function createApplicationLayer(
   | AuthenticationService
   | ArtifactCommentService
   | ArtifactManagementService
+  | ArtifactPlacementService
+  | FolderService
+  | TrashService
+  | FileCatalogService
+  | BatchService
   | AuthorizationService
   | CompareArtifactService
   | ContentAccessService
@@ -242,6 +276,7 @@ export function createApplicationLayer(
   | InstallationAccessService
   | InteractiveLoginService
   | LinkedArtifactService
+  | LinkedFolderService
   | PublishArtifactService
   | ProjectGitHistoryService
   | ProjectManagementService
@@ -294,8 +329,10 @@ export function createApplicationLayer(
               idempotencyKey,
               inputDigest,
             ),
+          // A key whose artifact has since moved to another project answers
+          // not-found in the project that received it.
           catch: (cause) =>
-            cause instanceof IdempotencyConflict
+            cause instanceof IdempotencyConflict || cause instanceof ArtifactNotFound
               ? cause
               : repositoryFailure("findIdempotentPublication", cause),
         }),
@@ -485,6 +522,7 @@ export function createApplicationLayer(
   };
   const managementDependencies: ArtifactManagementDependencies = {
     clock,
+    recoverableDeletion: adapters.trash !== undefined,
     repository: {
       changeAccessSetting: (command) =>
         Effect.tryPromise({
@@ -609,6 +647,7 @@ export function createApplicationLayer(
         "versionContainsPath",
         () => adapters.repository.versionContainsPath(projectId, versionId, path),
       ),
+      ...trashThreadHold(adapters.trash),
     },
   };
   const dispatchStore = adapters.dispatches;
@@ -1171,8 +1210,38 @@ export function createApplicationLayer(
   const comparisonLayer = CompareArtifactService.layer(
     comparisonDependencies,
   ).pipe(Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer)));
+  const foldersLayer = folderPlacementLayer(adapters.folders, adapters.clock, adapters.ids).pipe(
+    Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer)),
+  );
+  const trashServiceLayer = trashLayer(adapters.trash, adapters.clock).pipe(
+    Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer)),
+  );
+  const linkedFolders = adapters.linkedFolders;
+  const linkedFolderLayer = linked === undefined || linkedFolders === undefined
+    ? disabledLinkedFolderLayer
+    : LinkedFolderService.layer({
+      clock,
+      directories: linkedFolders.directories,
+      ids: adapters.ids,
+      installationId: adapters.installationId,
+      linkRoots: linked.configuration.linkRoots,
+      repository: linkedFolders.repository,
+      secrets: contentDependencies.secrets,
+      sources: linked.engine,
+    }).pipe(Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer, linkedLayer, foldersLayer)));
+  const fileCatalogServiceLayer = fileCatalogLayer(adapters.fileCatalog).pipe(
+    Layer.provideMerge(Layer.mergeAll(authorizationLayer, projectLayer)),
+  );
+  const batchServiceLayer = batchLayer.pipe(
+    Layer.provideMerge(Layer.mergeAll(foldersLayer, trashServiceLayer, managementLayer, linkedLayer)),
+  );
   return Layer.mergeAll(
     authenticationLayer,
+    foldersLayer,
+    trashServiceLayer,
+    linkedFolderLayer,
+    fileCatalogServiceLayer,
+    batchServiceLayer,
     commentLayer,
     dispatchLayer,
     identityLayer,
@@ -1451,6 +1520,15 @@ function classifyDispatchFailure(
     return cause;
   }
   return repositoryFailure(operation, cause);
+}
+
+function trashThreadHold(trash: TrashRepository | undefined) {
+  return trash === undefined ? {} : {
+    holdsTrashedThread: (projectId: string, artifactId: string, threadId: string) => commentEffect(
+      "findTrashedThreadHold",
+      () => trash.holdsTrashedThread(projectId, artifactId, threadId),
+    ),
+  };
 }
 
 function commentEffect<A>(

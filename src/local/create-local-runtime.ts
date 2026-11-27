@@ -28,6 +28,7 @@ import { LocalStagingStore } from "../storage/local-staging-store.js";
 import { SqliteArtifactInsightsStore } from "../storage/sqlite-artifact-insights.js";
 import { SqliteArtifactRepository } from "../storage/sqlite-artifact-repository.js";
 import { SqliteIdentityRepository } from "../storage/sqlite-identity-repository.js";
+import { SqliteScanPageWriter } from "../storage/sqlite-scan-page-writer.js";
 import {
   createLocalApplicationLayer,
   type LinkedApplicationAdapters,
@@ -42,6 +43,16 @@ import {
   refreshFreshness,
 } from "./linked-source-engine.js";
 import { mediaTypeForPath } from "../client/file-publication-client.js";
+import {
+  canonicalizeEntryPath,
+  canonicalizeLinkDirectory,
+  hashLinkedFile,
+  openDirectoryScan,
+  readIgnoreFile,
+  verifyLinkDirectory,
+  watchLinkedDirectory,
+} from "./linked-directory-engine.js";
+import {type LinkedFolderIndexerOptions, startLinkedFolderIndexer} from "./linked-folder-indexer.js";
 import type {RuntimeLifecycle} from "../lifecycle/runtime-readiness.js";
 import {
   defaultStagingCleanupPolicy,
@@ -104,6 +115,15 @@ export interface LocalRuntimeConfig {
   readonly linkedFiles?: "off" | "on";
   /** Canonical roots linked source paths must resolve inside. */
   readonly linkRoots?: readonly string[];
+  /** Watch hints for linked folders; "off" leaves only explicit and periodic scans. */
+  readonly linkedFolderWatch?: "off" | "on";
+  /** Periodic reconciliation interval override; production uses 10 minutes. */
+  readonly linkedFolderReconcileIntervalMilliseconds?: number;
+  /** Deterministic observation points for conformance suites only. */
+  readonly linkedFolderHooks?: {
+    readonly afterFirstCaptureRead?: (canonicalPath: string) => Promise<void>;
+    readonly beforeScanPage?: (linkPath: string) => Promise<void>;
+  };
   readonly localBootstrapToken?: string;
   readonly mcpOAuthResource?: McpOAuthResourceConfiguration;
   readonly observability?: boolean;
@@ -136,7 +156,9 @@ export async function createLocalRuntime(
   let applicationGitHistory = fixedGitHistoryCapabilityReader(
     gitHistory.capability,
   );
-  const repository = new SqliteArtifactRepository(databasePath, installationId);
+  const linkedFilesEnabled = config.linkedFiles === "on";
+  const scanPageWriter = linkedFilesEnabled ? new SqliteScanPageWriter(databasePath) : null;
+  const repository = new SqliteArtifactRepository(databasePath, installationId, scanPageWriter?.apply);
   const insights = new SqliteArtifactInsightsStore(databasePath, installationId);
   const identityRepository = new SqliteIdentityRepository(databasePath);
   const configuredGitHistory = configuredNodeGitHistory(gitHistory);
@@ -171,7 +193,6 @@ export async function createLocalRuntime(
     repository.close();
     throw cause;
   }
-  const linkedFilesEnabled = config.linkedFiles === "on";
   const selfProtectedPaths = {
     databasePath,
     dataDirectory: config.dataDirectory,
@@ -187,8 +208,16 @@ export async function createLocalRuntime(
         engine: {
           canonicalizeLinkPath,
           canonicalizeLinkRoots,
-          captureSource: (canonicalPath, spoolDirectory) =>
-            captureSource(canonicalPath, spoolDirectory),
+          captureSource: (canonicalPath, spoolDirectory) => {
+            const afterFirstCaptureRead = config.linkedFolderHooks?.afterFirstCaptureRead;
+            return captureSource(
+              canonicalPath,
+              spoolDirectory,
+              afterFirstCaptureRead === undefined
+                ? undefined
+                : {afterFirstRead: () => afterFirstCaptureRead(canonicalPath)},
+            );
+          },
           checkLinkRoots,
           checkSelfProtection: (canonicalPath) =>
             checkSelfProtection(canonicalPath, selfProtectedPaths),
@@ -206,8 +235,10 @@ export async function createLocalRuntime(
         identityRepository,
         insights,
         repository,
+        scanPageWriter,
       }),
-      (owned) => Effect.sync(() => {
+      (owned) => Effect.promise(async () => {
+        await owned.scanPageWriter?.close();
         owned.gitHistoryIdentityStore?.close();
         owned.identityRepository.close();
         owned.insights.close();
@@ -215,6 +246,7 @@ export async function createLocalRuntime(
       }),
     ),
   );
+  const foldersAvailable = config.browserAccess.mode === browserAccessModes.localOwner;
   let applicationAdapters: Parameters<typeof createLocalApplicationLayer>[0] = {
     apiToken: config.browserAccess.mode === browserAccessModes.localOwner
       ? apiToken
@@ -244,11 +276,33 @@ export async function createLocalRuntime(
     staging,
     stagingCleanupPolicy,
   };
+  if (foldersAvailable) {
+    applicationAdapters = {
+      ...applicationAdapters, folders: repository.folders, trash: repository.trash, fileCatalog: repository.fileCatalog,
+    };
+  }
   if (gitHistoryProvider !== null) {
     Object.assign(applicationAdapters, {gitHistoryProvider});
   }
   if (linkedAdapters !== undefined) {
     applicationAdapters = {...applicationAdapters, linked: linkedAdapters};
+  }
+  const linkedFoldersEnabled = linkedAdapters !== undefined && foldersAvailable;
+  if (linkedFoldersEnabled) {
+    const scanHooks = config.linkedFolderHooks?.beforeScanPage === undefined
+      ? {}
+      : {beforeScanPage: config.linkedFolderHooks.beforeScanPage};
+    applicationAdapters = {...applicationAdapters, linkedFolders: {
+      directories: {
+        canonicalizeEntryPath,
+        canonicalizeLinkDirectory,
+        hashFile: hashLinkedFile,
+        openScan: (linkPath, options) => openDirectoryScan(linkPath, options, selfProtectedPaths, scanHooks),
+        readIgnoreFile,
+        verifyLinkDirectory,
+      },
+      repository: repository.folderLinks,
+    }};
   }
   const applicationLayer = createLocalApplicationLayer(applicationAdapters);
   const telemetryLayer = config.observability === true
@@ -263,8 +317,22 @@ export async function createLocalRuntime(
   );
   let gitHistoryMonitor: GitHistoryCapabilityMonitor | null = null;
   let gitHistoryWorker: Awaited<ReturnType<typeof startGitHistoryMirrorWorker>> | null = null;
+  let linkedFolderIndexer: Awaited<ReturnType<typeof startLinkedFolderIndexer>> | null = null;
   try {
     await applicationRuntime.context();
+    if (linkedFoldersEnabled) {
+      let indexerOptions: LinkedFolderIndexerOptions = {
+        watch: config.linkedFolderWatch !== "off",
+        watchDirectory: watchLinkedDirectory,
+      };
+      if (config.linkedFolderReconcileIntervalMilliseconds !== undefined) {
+        indexerOptions = {
+          ...indexerOptions,
+          reconcileIntervalMilliseconds: config.linkedFolderReconcileIntervalMilliseconds,
+        };
+      }
+      linkedFolderIndexer = await startLinkedFolderIndexer(applicationRuntime, indexerOptions);
+    }
     if (
       configuredGitHistory !== null &&
       gitHistoryIdentityStore !== null &&
@@ -301,6 +369,9 @@ export async function createLocalRuntime(
       gitHistory: gitHistoryMonitor?.reader ??
         fixedGitHistoryCapabilityReader(gitHistory.capability),
       linkedArtifacts: linkedFilesEnabled,
+      linkedFolders: linkedFoldersEnabled,
+      folders: foldersAvailable,
+      trash: foldersAvailable,
       trustedApplicationOrigin: config.applicationOrigin ?? null,
       webAssets: createNodeWebAssetStore(config.webAssetsRoot),
     };
@@ -338,12 +409,14 @@ export async function createLocalRuntime(
       cleanupStaging: (limit) => runStagingCleanupPass(applicationRuntime, limit),
       close: async () => {
         if (closeCleanupSchedule !== null) await closeCleanupSchedule();
+        if (linkedFolderIndexer !== null) await linkedFolderIndexer.close();
         if (gitHistoryWorker !== null) await gitHistoryWorker.close();
         if (gitHistoryMonitor !== null) await gitHistoryMonitor.close();
         await applicationRuntime.dispose();
       },
     };
   } catch (error) {
+    if (linkedFolderIndexer !== null) await linkedFolderIndexer.close();
     if (gitHistoryWorker !== null) await gitHistoryWorker.close();
     if (gitHistoryMonitor !== null) await gitHistoryMonitor.close();
     await applicationRuntime.dispose();

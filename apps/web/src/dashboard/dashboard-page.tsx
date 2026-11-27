@@ -8,7 +8,10 @@ import {ButtonLink} from "@/components/ui/button";
 import {NativeSelect} from "@/components/ui/native-select";
 import {Skeleton} from "@/components/ui/skeleton";
 import {ToggleGroup, ToggleGroupItem} from "@/components/ui/toggle-group";
+import {LanguageSwitch} from "@/i18n/language-switch";
+import {dashboardText} from "@/i18n/messages/dashboard";
 import {ArtifactMark} from "../review/artifact-mark.tsx";
+import {DashboardAttention} from "./dashboard-attention.tsx";
 import {ActivitySection} from "./dashboard-activity.tsx";
 import {dashboardWindows} from "./dashboard-format.ts";
 import {
@@ -30,14 +33,17 @@ interface DashboardSelection {
 }
 
 const allProjects = "";
+const text = dashboardText.page;
 
 /** Read-only overview of artifacts, review, storage, and activity. */
 export function DashboardPage({
   onThemeChange,
+  principalId,
   projects,
   theme,
 }: {
   readonly onThemeChange: () => void;
+  readonly principalId: string;
   readonly projects: readonly Project[];
   readonly theme: "dawn" | "moon";
 }) {
@@ -45,6 +51,7 @@ export function DashboardPage({
   const [state, setState] = useState<InsightsState>({status: "loading"});
   const [attempt, setAttempt] = useState(0);
   const [now, setNow] = useState(() => Date.now());
+  const projectIds = useMemo(() => projects.map((project) => project.id), [projects]);
   const projectNames = useMemo(
     () => new Map(projects.map((project) => [project.id, project.name])),
     [projects],
@@ -82,31 +89,32 @@ export function DashboardPage({
             <span className="as-settings__brand-mark">
               <ArtifactMark className="as-settings__mark" />
             </span>
-            <span className="as-settings__brand-label">Dashboard</span>
+            <span className="as-settings__brand-label">{text.title}</span>
           </a>
           <div className="as-settings__header-actions">
+            <LanguageSwitch />
             <button
-              aria-label={theme === "moon" ? "Use light theme" : "Use dark theme"}
+              aria-label={theme === "moon" ? text.useLightTheme : text.useDarkTheme}
               className="as-icon-button"
               onClick={onThemeChange}
-              title={theme === "moon" ? "Use light theme" : "Use dark theme"}
+              title={theme === "moon" ? text.useLightTheme : text.useDarkTheme}
               type="button"
             >
               <HugeiconsIcon icon={theme === "moon" ? Sun03Icon : Moon02Icon} strokeWidth={1.8} />
             </button>
             <ButtonLink href="/review" size="sm" variant="outline">
               <HugeiconsIcon data-icon="inline-start" icon={ArrowLeft01Icon} strokeWidth={1.8} />
-              Back to review
+              {text.backToReview}
             </ButtonLink>
           </div>
         </div>
       </header>
-      <main className="mx-auto grid w-full max-w-7xl min-w-0 grid-cols-1 gap-6 px-4 py-8 sm:px-6" id="main-content">
+      <main className="mx-auto grid w-full max-w-[72rem] min-w-0 grid-cols-1 gap-6 px-4 pt-6 pb-24 sm:px-6" id="main-content">
         <PageHeader
           actions={(
             <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
               <NativeSelect
-                aria-label="Project"
+                aria-label={text.project}
                 onChange={(event) => setSelection((current) => ({
                   ...current,
                   projectId: event.target.value === allProjects ? null : event.target.value,
@@ -114,13 +122,13 @@ export function DashboardPage({
                 size="sm"
                 value={selection.projectId ?? allProjects}
               >
-                <option value={allProjects}>All projects</option>
+                <option value={allProjects}>{text.allProjects}</option>
                 {projects.map((project) => (
                   <option key={project.id} value={project.id}>{project.name}</option>
                 ))}
               </NativeSelect>
               <ToggleGroup
-                aria-label="Time window"
+                aria-label={text.timeWindow}
                 className="w-full sm:w-fit"
                 onValueChange={(values) => {
                   const chosen = dashboardWindows.find((option) => values.includes(option.value));
@@ -141,9 +149,8 @@ export function DashboardPage({
               </ToggleGroup>
             </div>
           )}
-          description="Artifacts, review progress, storage, and activity at a glance."
-          eyebrow="Artifact Server"
-          title="Dashboard"
+          description={text.description}
+          title={text.title}
         />
         {state.status === "loading" ? <DashboardSkeleton /> : null}
         {state.status === "failed"
@@ -152,17 +159,31 @@ export function DashboardPage({
         {state.status === "ready"
           ? (
             <>
-              <DashboardHeadline insights={state.insights} />
-              <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-                <OverviewSection insights={state.insights} now={now} projectNames={projectNames} />
-                <ReviewSection insights={state.insights} now={now} />
-                <StorageSection insights={state.insights} projectNames={projectNames} />
-                <ActivitySection
-                  now={now}
-                  projectId={selection.projectId}
-                  projectNames={projectNames}
-                  window={selection.window}
-                />
+              <DashboardAttention principalId={principalId} projectId={selection.projectId} projectIds={projectIds} />
+              <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-12">
+                <div className="grid min-w-0 gap-6 xl:col-span-8">
+                  <ActivitySection
+                    now={now}
+                    projectId={selection.projectId}
+                    projectNames={projectNames}
+                    window={selection.window}
+                  />
+                </div>
+                <div className="grid min-w-0 gap-6 xl:col-span-4">
+                  <DashboardHeadline insights={state.insights} />
+                  <ReviewSection insights={state.insights} now={now} />
+                </div>
+                <div className="min-w-0 xl:col-span-12">
+                  <OverviewSection insights={state.insights} now={now} projectNames={projectNames} />
+                </div>
+                <div className="min-w-0 xl:col-span-12">
+                  <details className="rounded-[var(--radius-card)] border border-border bg-card p-4">
+                    <summary className="cursor-pointer font-medium">{dashboardText.storage.title}</summary>
+                    <div className="mt-3">
+                      <StorageSection insights={state.insights} projectNames={projectNames} />
+                    </div>
+                  </details>
+                </div>
               </div>
             </>
           )
@@ -182,17 +203,17 @@ function DashboardFailure({
   if (error instanceof ApiError && error.code === "CAPABILITY_UNAVAILABLE") {
     return (
       <StatePanel
-        description="This deployment's storage does not provide dashboard insights. They are available on the local SQLite deployment."
-        title="Dashboard unavailable"
+        description={text.unavailableDescription}
+        title={text.unavailableTitle}
       />
     );
   }
   if (error instanceof ApiError && error.code === "PROJECT_NOT_FOUND") {
     return (
       <StatePanel
-        action={<ButtonLink href="/review/dashboard" variant="outline">Show all projects</ButtonLink>}
-        description="The selected project does not exist in this installation."
-        title="Project not found"
+        action={<ButtonLink href="/review/dashboard" variant="outline">{text.showAllProjects}</ButtonLink>}
+        description={text.projectNotFoundDescription}
+        title={text.projectNotFoundTitle}
       />
     );
   }
@@ -201,16 +222,12 @@ function DashboardFailure({
 
 function DashboardSkeleton() {
   return (
-    <div aria-busy="true" aria-label="Loading dashboard" className="grid gap-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {["artifacts", "threads", "stored", "dispatches"].map((key) => (
-          <Skeleton className="h-28" key={key} />
-        ))}
-      </div>
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        {["overview", "review", "storage", "activity"].map((key) => (
-          <Skeleton className="h-80" key={key} />
-        ))}
+    <div aria-busy="true" aria-label={text.loading} className="grid gap-6">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+        <Skeleton className="h-[28rem] xl:col-span-8" />
+        <Skeleton className="h-[28rem] xl:col-span-4" />
+        <Skeleton className="h-80 xl:col-span-7" />
+        <Skeleton className="h-80 xl:col-span-5" />
       </div>
     </div>
   );

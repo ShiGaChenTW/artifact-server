@@ -12,9 +12,33 @@ export type SettingsRoute =
 /** The dashboard's one canonical path inside the application. */
 export const dashboardPath = "/review/dashboard";
 
+/** The linked-folders page's one canonical path inside the application. */
+export const linkedFoldersPath = "/review/linked-folders";
+
+/** Return whether the current document path is the linked-folders page. */
+export function isLinkedFoldersPath(pathname: string): boolean {
+  return pathname === linkedFoldersPath || pathname === `${linkedFoldersPath}/`;
+}
+
 /** Return whether the current document path is the dashboard. */
 export function isDashboardPath(pathname: string): boolean {
   return pathname === dashboardPath || pathname === `${dashboardPath}/`;
+}
+
+/** The Files page: the cross-project overview beside Dashboard and Settings. */
+export const filesPath = "/review/files";
+
+/** Return whether the current document path is the Files page. */
+export function isFilesPath(pathname: string): boolean {
+  return pathname === filesPath || pathname === `${filesPath}/`;
+}
+
+/** The Trash view's canonical path, beside the Files page. */
+export const trashPath = "/review/files/trash";
+
+/** Return whether the current document path is the Trash view. */
+export function isTrashPath(pathname: string): boolean {
+  return pathname === trashPath || pathname === `${trashPath}/`;
 }
 
 /** Return whether the current document path belongs to the settings mode. */

@@ -29,7 +29,10 @@ import {
   useCommentListOwnership,
   useCommentPoll,
 } from "@/components/comments/comment-poll";
-import {formatTimestamp} from "@/lib/presentation";
+import {componentsText} from "@/i18n/messages/components";
+import {refinementText} from "@/i18n/messages/review-refinements";
+import {reviewPartsText} from "@/i18n/messages/review-parts";
+import {formatTimestamp, displayError} from "@/lib/presentation";
 import {bundleOfThreads} from "@/components/dispatch/dispatch-bundle";
 import {loadDispatchIndex} from "@/components/dispatch/dispatch-index";
 import {
@@ -47,15 +50,16 @@ import {
 
 const threadPageSize = 100;
 const conversationLoadConcurrency = 6;
+const text = reviewPartsText.comments;
 
 function agentPresenceSummary(agents: readonly AgentPresence[] | null): string {
-  if (agents === null) return "Checking presence…";
+  if (agents === null) return text.presence.checking;
   const connectedCount = agents.filter((agent) => agent.connected).length;
   const offlineCount = agents.length - connectedCount;
   if (offlineCount === 0) {
-    return connectedCount === 0 ? "No agents connected" : `${connectedCount} connected`;
+    return connectedCount === 0 ? text.presence.none : text.presence.connected(connectedCount);
   }
-  return `${connectedCount} connected · ${offlineCount} offline`;
+  return text.presence.mixed(connectedCount, offlineCount);
 }
 
 function threadQuery(
@@ -151,13 +155,16 @@ export interface ReviewCommentSession {
   readonly loading: boolean;
   readonly projectId: string;
   readonly reload: () => Promise<void>;
+  readonly revealThread: (thread: CommentThread) => void;
   readonly repliesByThread: ReadonlyMap<string, readonly CommentReply[]>;
+  readonly selectionAttempt: number;
   readonly selectedThreadId: string | null;
   readonly selectThread: (threadId: string | null) => void;
   readonly submit: (
     body: string,
     anchor: ReviewAnchor | null,
     path: string | null,
+    idempotencyKey?: string,
   ) => Promise<boolean>;
   readonly threads: readonly CommentThread[];
   readonly unanchoredIds: readonly string[];
@@ -168,11 +175,13 @@ export interface ReviewCommentSession {
 /** Keep one Review version's saved threads and Plannotator projections in sync. */
 export function useReviewComments({
   artifactId,
+  onPathChanged,
   onVersionChanged,
   projectId,
   versionId,
 }: {
   readonly artifactId: string | null;
+  readonly onPathChanged: (path: string) => void;
   readonly onVersionChanged: (versionId: string) => void;
   readonly projectId: string;
   readonly versionId: string | null;
@@ -183,6 +192,8 @@ export function useReviewComments({
     readonly CommentReply[]
   >>(new Map());
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const [selectionAttempt, setSelectionAttempt] = useState(0);
+  const [extraSelection, setExtraSelection] = useState<CommentThread | null>(null);
   const [unanchoredIds, setUnanchoredIds] = useState<readonly string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -227,7 +238,7 @@ export function useReviewComments({
     } catch (caught) {
       if (reloadGenerationRef.current !== generation) return;
       setError(
-        caught instanceof Error ? caught : new Error("Comment loading failed."),
+        caught instanceof Error ? caught : new Error(text.failure.load),
       );
     } finally {
       if (reloadGenerationRef.current === generation) setLoading(false);
@@ -239,6 +250,7 @@ export function useReviewComments({
     setRepliesByThread(new Map());
     setSelectedThreadId(null);
     setUnanchoredIds([]);
+    setExtraSelection(null);
     void reload();
   }, [reload]);
 
@@ -249,11 +261,12 @@ export function useReviewComments({
     );
     if (
       selectedThreadId !== null
+      && extraSelection?.id !== selectedThreadId
       && !threads.some((thread) => thread.id === selectedThreadId)
     ) {
       setSelectedThreadId(null);
     }
-  }, [selectedThreadId, threads]);
+  }, [extraSelection, selectedThreadId, threads]);
 
   const poll = useCallback(async (): Promise<void> => {
     if (artifactId === null || projectId === "" || versionId === null) return;
@@ -299,6 +312,7 @@ export function useReviewComments({
     body: string,
     anchor: ReviewAnchor | null,
     path: string | null,
+    idempotencyKey: string = crypto.randomUUID(),
   ): Promise<boolean> => {
     if (artifactId === null || projectId === "" || versionId === null) return false;
     setError(null);
@@ -310,7 +324,7 @@ export function useReviewComments({
           artifactId,
           versionId,
           {anchor: storedAnchor, body, path},
-          crypto.randomUUID(),
+          idempotencyKey,
         )
       );
       if (created.thread.versionId !== versionId) {
@@ -322,7 +336,7 @@ export function useReviewComments({
       return true;
     } catch (caught) {
       setError(
-        caught instanceof Error ? caught : new Error("Comment creation failed."),
+        caught instanceof Error ? caught : new Error(text.failure.create),
       );
       return false;
     }
@@ -340,7 +354,7 @@ export function useReviewComments({
       await reload();
     } catch (caught) {
       setError(
-        caught instanceof Error ? caught : new Error("Comment state change failed."),
+        caught instanceof Error ? caught : new Error(text.failure.changeState),
       );
     }
   }, [artifactId, ownership, projectId, reload]);
@@ -363,7 +377,7 @@ export function useReviewComments({
       await reload();
       return true;
     } catch (caught) {
-      setError(caught instanceof Error ? caught : new Error("Reply creation failed."));
+      setError(caught instanceof Error ? caught : new Error(text.failure.createReply));
       return false;
     }
   }, [artifactId, ownership, projectId, reload]);
@@ -385,7 +399,7 @@ export function useReviewComments({
       await reload();
       return true;
     } catch (caught) {
-      setError(caught instanceof Error ? caught : new Error("Reply edit failed."));
+      setError(caught instanceof Error ? caught : new Error(text.failure.editReply));
       return false;
     }
   }, [artifactId, ownership, projectId, reload]);
@@ -402,14 +416,30 @@ export function useReviewComments({
       ));
       await reload();
     } catch (caught) {
-      setError(caught instanceof Error ? caught : new Error("Reply deletion failed."));
+      setError(caught instanceof Error ? caught : new Error(text.failure.deleteReply));
     }
   }, [artifactId, ownership, projectId, reload]);
 
-  const annotations = useMemo(
-    () => threads.filter((thread) => thread.state === "open").map(toAnnotation),
-    [threads],
-  );
+  const annotations = useMemo(() => {
+    const open = threads.filter((thread) => thread.state === "open");
+    if (extraSelection !== null && !open.some((thread) => thread.id === extraSelection.id)) {
+      open.push(extraSelection);
+    }
+    return open.map(toAnnotation);
+  }, [extraSelection, threads]);
+
+  const selectThread = useCallback((threadId: string | null): void => {
+    setExtraSelection((current) => current?.id === threadId ? current : null);
+    setSelectedThreadId(threadId);
+    setSelectionAttempt((current) => current + 1);
+  }, []);
+  const revealThread = useCallback((thread: CommentThread): void => {
+    selectThread(thread.id);
+    if (thread.state === "resolved" || !threads.some((shown) => shown.id === thread.id)) {
+      setExtraSelection(thread);
+    }
+    if (thread.path !== null) onPathChanged(thread.path);
+  }, [onPathChanged, selectThread, threads]);
 
   return {
     annotations,
@@ -421,9 +451,11 @@ export function useReviewComments({
     loading,
     projectId,
     reload,
+    revealThread,
     repliesByThread,
     selectedThreadId,
-    selectThread: setSelectedThreadId,
+    selectionAttempt,
+    selectThread,
     submit,
     threads,
     unanchoredIds,
@@ -458,17 +490,17 @@ function NewThreadComposer({
         initialBody={draft.initialBody}
         inputId={`review-new-thread-${versionId}`}
         key={`new-thread-${versionId}-${draft.restored ? "draft" : "empty"}`}
-        label="Add a comment"
+        label={text.addComment}
         maximumCharacters={maximumCommentBodyCharacters}
         onBodyChange={draft.onBodyChange}
         onCancel={null}
         onDiscardDraft={draft.onDiscard}
-        onSubmit={async (body) => {
-          const saved = await session.submit(body, null, null);
+        onSubmit={async (body, idempotencyKey) => {
+          const saved = await session.submit(body, null, null, idempotencyKey);
           if (saved) draft.onPosted();
           return saved;
         }}
-        submitLabel="Post comment"
+        submitLabel={text.postComment}
       />
     </div>
   );
@@ -503,7 +535,7 @@ function ReplyComposer({
           onClick={() => setExpanded(true)}
           type="button"
         >
-          Reply
+          {text.reply}
         </button>
       </div>
     );
@@ -512,11 +544,11 @@ function ReplyComposer({
   return (
     <div className="as-comment-reply-composer" data-expanded="true">
       <CommentComposer
-        cancelLabel="Cancel"
+        cancelLabel={text.cancel}
         draftRestored={draft.restored}
         initialBody={replyBody}
         inputId={`review-reply-${thread.id}`}
-        label="Reply"
+        label={text.reply}
         maximumCharacters={maximumCommentBodyCharacters}
         onBodyChange={(body) => {
           setReplyBody(body);
@@ -536,13 +568,13 @@ function ReplyComposer({
           }
           return saved;
         }}
-        submitLabel="Post reply"
+        submitLabel={text.postReply}
       />
     </div>
   );
 }
 
-type CommentView = "all" | "open" | "resolved" | "sent";
+type CommentView = "all" | "awaiting" | "open" | "resolved" | "sent";
 
 export interface ReviewCommentsInspectorHandle {
   readonly reload: () => Promise<void>;
@@ -552,20 +584,26 @@ export interface ReviewCommentsInspectorHandle {
 export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle, {
   readonly canDeleteAny: boolean;
   readonly canComment: boolean;
+  readonly linkedThreadId?: string | null;
   readonly principalId: string;
+  readonly onSendRequestHandled?: () => void;
+  readonly sendRequested?: boolean;
   readonly session: ReviewCommentSession;
   readonly versionId: string | null;
 }>(function ReviewCommentsInspector({
   canDeleteAny,
   canComment,
+  linkedThreadId = null,
   principalId,
+  onSendRequestHandled,
+  sendRequested = false,
   session,
   versionId,
 }, ref) {
   const unanchored = new Set(session.unanchoredIds);
   const [agents, setAgents] = useState<readonly AgentPresence[] | null>(null);
   const [agentError, setAgentError] = useState<Error | null>(null);
-  const [view, setView] = useState<CommentView>("open");
+  const [view, setView] = useState<CommentView>(linkedThreadId === null ? "open" : "all");
   const [sentThreads, setSentThreads] = useState<readonly CommentThread[]>([]);
   const [sentReplies, setSentReplies] = useState<ReadonlyMap<
     string,
@@ -577,17 +615,22 @@ export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle,
   >>(new Map());
   const [sentLoading, setSentLoading] = useState(false);
   const [sentError, setSentError] = useState<Error | null>(null);
+  const sendAllRef = useRef<HTMLDivElement>(null);
+  const dispatchGeneration = useRef(0);
+  const linkedCard = useRef<HTMLElement>(null);
+  const revealedLink = useRef<string | null>(null);
 
   const loadAgents = useCallback(async (): Promise<void> => {
     try {
       setAgents(await api.agentPresence());
       setAgentError(null);
     } catch (caught) {
-      setAgentError(caught instanceof Error ? caught : new Error("Agent presence failed."));
+      setAgentError(caught instanceof Error ? caught : new Error(text.failure.presence));
     }
   }, []);
 
   const loadSent = useCallback(async (): Promise<void> => {
+    const generation = ++dispatchGeneration.current;
     if (session.artifactId === null || session.projectId === "" || versionId === null) {
       setSentThreads([]);
       setSentReplies(new Map());
@@ -597,26 +640,26 @@ export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle,
     setSentLoading(true);
     setSentError(null);
     try {
-      const listed = await loadAllThreads(
-        session.projectId,
-        session.artifactId,
-        versionId,
-        null,
-        "only",
-      );
+      const [listed, all] = await Promise.all([
+        loadAllThreads(session.projectId, session.artifactId, versionId, null, "only"),
+        loadAllThreads(session.projectId, session.artifactId, versionId, null, "include"),
+      ]);
       const [conversations, index] = await Promise.all([
         loadConversations(session.projectId, session.artifactId, listed),
-        loadDispatchIndex(session.projectId, listed.map((thread) => thread.id)),
+        loadDispatchIndex(session.projectId, all.map((thread) => thread.id)),
       ]);
+      if (generation !== dispatchGeneration.current) return;
       setSentThreads(conversations.map(({thread}) => thread));
       setSentReplies(new Map(
         conversations.map(({replies, thread}) => [thread.id, replies]),
       ));
       setDispatchByThread(index);
     } catch (caught) {
-      setSentError(caught instanceof Error ? caught : new Error("Sent comments failed."));
+      if (generation === dispatchGeneration.current) {
+        setSentError(caught instanceof Error ? caught : new Error(text.failure.sent));
+      }
     } finally {
-      setSentLoading(false);
+      if (generation === dispatchGeneration.current) setSentLoading(false);
     }
   }, [session.artifactId, session.projectId, versionId]);
 
@@ -624,18 +667,30 @@ export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle,
     await Promise.all([session.reload(), loadSent(), loadAgents()]);
   }, [loadAgents, loadSent, session.reload]);
   useImperativeHandle(ref, () => ({reload: reloadDispatchSurface}), [reloadDispatchSurface]);
+  useEffect(() => {
+    if (!sendRequested || agents === null) return;
+    onSendRequestHandled?.();
+    const control = sendAllRef.current?.querySelector<HTMLElement>("button:not([disabled]), a");
+    if (control instanceof HTMLButtonElement) control.click();
+    else control?.focus();
+  }, [agents, onSendRequestHandled, sendRequested]);
   const dispatchUndo = useDispatchUndo(session.projectId, reloadDispatchSurface);
 
   useEffect(() => {
+    setSentThreads([]);
+    setSentReplies(new Map());
+    setDispatchByThread(new Map());
     void Promise.all([loadAgents(), loadSent()]);
+    return () => { dispatchGeneration.current += 1; };
   }, [loadAgents, loadSent]);
   useCommentPoll(loadAgents, session.projectId !== "");
   useCommentPoll(
     loadSent,
-    view === "sent" && session.artifactId !== null && versionId !== null,
+    session.artifactId !== null && versionId !== null,
   );
 
   const openThreads = session.threads.filter((thread) => thread.state === "open");
+  const awaitingThreads = openThreads.filter((thread) => dispatchByThread.get(thread.id)?.state === "addressed");
   const resolvedThreads = session.threads.filter((thread) => thread.state === "resolved");
   const visibleThreads = view === "sent"
     ? sentThreads
@@ -643,10 +698,17 @@ export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle,
       ? [...openThreads, ...resolvedThreads]
       : view === "open"
         ? openThreads
-        : resolvedThreads;
+        : view === "awaiting" ? awaitingThreads : resolvedThreads;
   const visibleReplies = view === "sent" ? sentReplies : session.repliesByThread;
   const loadingVisible = view === "sent" ? sentLoading : session.loading;
   const now = Date.now();
+  const linkedThread = visibleThreads.find((thread) => thread.id === linkedThreadId);
+  useEffect(() => {
+    if (linkedThread === undefined || revealedLink.current === linkedThread.id) return;
+    revealedLink.current = linkedThread.id;
+    session.revealThread(linkedThread);
+    linkedCard.current?.scrollIntoView({block: "nearest"});
+  }, [linkedThread, session.revealThread]);
 
   const cancelDispatch = async (dispatch: AgentDispatch): Promise<void> => {
     setSentError(null);
@@ -654,7 +716,7 @@ export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle,
       await api.cancelAgentDispatch(session.projectId, dispatch.id);
       await reloadDispatchSurface();
     } catch (caught) {
-      setSentError(caught instanceof Error ? caught : new Error("Cancel failed."));
+      setSentError(caught instanceof Error ? caught : new Error(text.failure.cancel));
     }
   };
 
@@ -667,48 +729,53 @@ export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle,
       {dispatchUndo.element}
       <div className="as-comments__agents">
         <div>
-          <strong>Agents</strong>
+          <strong>{text.agentsHeading}</strong>
           <span>{agentPresenceSummary(agents)}</span>
         </div>
-        <div aria-label="Agent presence" role="group">
+        <div aria-label={text.presenceLabel} role="group">
           {agents?.map((agent) => (
             <PresenceAvatar agent={agent} key={agent.id} now={now} />
           ))}
         </div>
       </div>
       {agentError === null ? null : (
-        <p className="as-comments__agent-error">{agentError.message}</p>
+        <p className="as-comments__agent-error">{displayError(agentError)}</p>
       )}
       {canComment ? (
-        <div className="as-comments__send-all">
-          <SendToAgentControl
+        <div className="as-comments__send-all" ref={sendAllRef}>
+          {agents !== null && !agents.some((agent) => agent.connected) ? (
+            <p className="as-comments__connect">
+              {componentsText.dispatch.noAgentConnected}{" "}
+              <a href="/review/settings/mcp">{refinementText.connect}</a>
+            </p>
+          ) : <SendToAgentControl
             agents={agents}
             buttonSize="xs"
             buttonVariant="default"
             feedback={dispatchUndo.feedback}
-            label={`Send all open (${openThreads.length})…`}
+            label={text.sendAllOpen(openThreads.length)}
             onSent={onSent}
-            oneAgentLabel={(name) => `Send all open (${openThreads.length}) to ${name}`}
+            oneAgentLabel={(name) => text.sendAllOpenTo(openThreads.length, name)}
             openCount={openThreads.length}
             principalId={principalId}
             projectId={session.projectId}
             resolveBundle={() => Promise.resolve(bundleOfThreads(openThreads))}
-          />
+          />}
         </div>
       ) : null}
       {canComment ? null : (
         <p className="as-comments__read-only">
-          Comments are read-only for this account or archived project.
+          {text.readOnly}
         </p>
       )}
       {session.error === null ? null : (
-        <p className="as-comments__error" role="alert">{session.error.message}</p>
+        <p className="as-comments__error" role="alert">{displayError(session.error)}</p>
       )}
       {sentError === null ? null : (
-        <p className="as-comments__error" role="alert">{sentError.message}</p>
+        <p className="as-comments__error" role="alert">{displayError(sentError)}</p>
       )}
-      <nav aria-label="Comment filters" className="as-comments__filters">
-        {(["open", "all", "resolved", "sent"] as const).map((candidate) => (
+      <nav aria-label={text.filtersLabel} className="as-comments__filters">
+        {(["open", "awaiting", "all", "resolved", "sent"] as const).map((candidate) => (
           <button
             aria-pressed={view === candidate}
             className="as-button"
@@ -716,11 +783,9 @@ export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle,
             onClick={() => setView(candidate)}
             type="button"
           >
-            {candidate === "all"
-              ? "All"
-              : candidate === "sent"
-                ? `Sent (${sentThreads.length})`
-                : `${candidate[0]?.toUpperCase()}${candidate.slice(1)}`}
+            {candidate === "sent"
+              ? text.filter.sent(sentThreads.length)
+              : candidate === "awaiting" ? refinementText.awaiting(awaitingThreads.length) : text.filter[candidate]}
           </button>
         ))}
       </nav>
@@ -734,34 +799,46 @@ export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle,
         />
       ) : null}
       {loadingVisible && visibleThreads.length === 0 ? (
-        <p className="as-inspector-empty">Loading comments…</p>
+        <p className="as-inspector-empty">{text.loading}</p>
       ) : null}
       {!loadingVisible && visibleThreads.length === 0 ? (
         <p className="as-inspector-empty">
-          {view === "all"
-            ? "No comments on this version yet."
-            : view === "sent"
-              ? "No sent comments on this version."
-              : view === "open" && resolvedThreads.length > 0
-                ? "All comments on this version are resolved."
-                : `No ${view} comments on this version.`}
+          {view === "open" && resolvedThreads.length > 0
+            ? text.empty.allResolved
+            : view === "awaiting" ? refinementText.awaitingEmpty : text.empty[view]}
         </p>
       ) : null}
       <ol className="as-comment-list">
         {visibleThreads.map((thread) => {
-          const sentDispatch = view === "sent" ? dispatchByThread.get(thread.id) : undefined;
+          const sentDispatch = view === "sent" || view === "awaiting" || view === "open" || thread.id === linkedThreadId
+            ? dispatchByThread.get(thread.id)
+            : undefined;
+          const selected = session.selectedThreadId === thread.id;
           const replies = visibleReplies.get(thread.id) ?? [];
           return (
             <li key={thread.id}>
               <article
-                aria-current={session.selectedThreadId === thread.id ? "true" : undefined}
+                aria-current={selected ? "true" : undefined}
+                aria-keyshortcuts="Enter"
                 className="as-comment-card"
-                data-selected={session.selectedThreadId === thread.id}
+                data-selected={selected}
+                onClick={(event) => {
+                  if (!(event.target instanceof Element) || event.target.closest("button, a, input, textarea, label, [role='dialog']")) return;
+                  session.revealThread(thread);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && event.target === event.currentTarget && !event.nativeEvent.isComposing) {
+                    event.preventDefault();
+                    session.revealThread(thread);
+                  }
+                }}
+                ref={linkedThreadId === thread.id ? linkedCard : undefined}
+                tabIndex={0}
               >
                 <header>
                   <strong>{thread.author.displayName}</strong>
                   {sentDispatch === undefined
-                    ? <span data-state={thread.state}>{thread.state}</span>
+                    ? <span data-state={thread.state}>{text.state[thread.state]}</span>
                     : <DispatchStateChip state={sentDispatch.state} />}
                 </header>
                 <div className="as-comment-card__body">
@@ -769,78 +846,66 @@ export const ReviewCommentsInspector = forwardRef<ReviewCommentsInspectorHandle,
                   <footer>
                     <div className="as-comment-card__meta">
                       <span>
-                        Updated <time dateTime={thread.updatedAt}>
+                        {text.updatedPrefix}<time dateTime={thread.updatedAt}>
                           {formatTimestamp(thread.updatedAt)}
                         </time>
                       </span>
                       <span>
-                        {thread.path === null ? "Whole version" : (
-                          <>Page <code>{thread.path}</code></>
+                        {thread.path === null ? text.wholeVersion : (
+                          <>{text.pagePrefix}<code>{thread.path}</code></>
                         )}
                       </span>
                     </div>
                     {view !== "sent" && unanchored.has(thread.id) ? (
-                      <small>Location unavailable in this version</small>
+                      <small>{text.locationUnavailable}</small>
                     ) : null}
                     <div className="as-comment-card__actions">
-                      {view === "sent" ? (
-                        sentDispatch !== undefined && dispatchIsCancelable(sentDispatch.state) ? (
-                          <button
-                            className="as-button"
-                            onClick={() => void cancelDispatch(sentDispatch)}
-                            type="button"
-                          >
-                            Cancel send
-                          </button>
-                        ) : null
-                      ) : (
-                        <>
-                          {canComment && thread.state === "open" ? (
-                            <SendToAgentControl
-                              agents={agents}
-                              buttonSize="xs"
-                              buttonVariant="outline"
-                              feedback={dispatchUndo.feedback}
-                              label="Send…"
-                              onSent={onSent}
-                              oneAgentLabel={(name) => `Send to ${name}`}
-                              openCount={1}
-                              principalId={principalId}
-                              projectId={session.projectId}
-                              reasonDisplay="hidden"
-                              resolveBundle={() => Promise.resolve(bundleOfThreads([thread]))}
-                            />
-                          ) : null}
-                          {thread.path === null ? null : (
-                            <button
-                              className="as-button"
-                              onClick={() => session.selectThread(thread.id)}
-                              type="button"
-                            >
-                              Show in page
-                            </button>
-                          )}
-                          {canComment ? (
-                            <button
-                              className="as-button"
-                              onClick={() => void session.changeState(thread)}
-                              type="button"
-                            >
-                              {thread.state === "open" ? "Resolve" : "Reopen"}
-                            </button>
-                          ) : null}
-                        </>
-                      )}
+                      {view === "sent" && sentDispatch !== undefined && dispatchIsCancelable(sentDispatch.state) ? (
+                        <button
+                          className="as-button"
+                          onClick={() => void cancelDispatch(sentDispatch)}
+                          type="button"
+                        >
+                          {text.cancelSend}
+                        </button>
+                      ) : null}
+                      {canComment && thread.state === "open" ? (
+                        <div className="as-comment-card__secondary">
+                          <SendToAgentControl
+                            agents={agents}
+                            buttonSize="xs"
+                            buttonVariant="outline"
+                            feedback={dispatchUndo.feedback}
+                            label={text.send}
+                            onSent={onSent}
+                            oneAgentLabel={(name) => text.sendTo(name)}
+                            openCount={1}
+                            principalId={principalId}
+                            projectId={session.projectId}
+                            reasonDisplay="hidden"
+                            resolveBundle={() => Promise.resolve(bundleOfThreads([thread]))}
+                          />
+                        </div>
+                      ) : null}
+                      {canComment ? (
+                        <button
+                          className="as-button"
+                          onClick={() => void session.changeState(thread).then(loadSent)}
+                          type="button"
+                        >
+                          {thread.state === "open" ? text.resolve : text.reopen}
+                        </button>
+                      ) : null}
                     </div>
                   </footer>
                 </div>
                 {replies.length === 0 ? null : (
                   <section
-                    aria-label={`${replies.length} ${replies.length === 1 ? "reply" : "replies"}`}
+                    aria-label={text.replies(replies.length)}
                     className="as-comment-card__conversation"
                   >
                     <p className="as-comment-card__conversation-label">
-                      {replies.length} {replies.length === 1 ? "reply" : "replies"}
+                      {text.replies(replies.length)}
                     </p>
                     <ol className="as-comment-replies">
                       {replies.map((reply) => (
@@ -907,10 +972,10 @@ function ReviewReply({
       </header>
       {editing ? (
         <CommentComposer
-          cancelLabel="Cancel"
+          cancelLabel={text.cancel}
           initialBody={reply.body}
           inputId={editorId}
-          label="Edit reply"
+          label={text.editReply}
           maximumCharacters={maximumCommentBodyCharacters}
           onCancel={() => setEditing(false)}
           onSubmit={async (body) => {
@@ -918,14 +983,14 @@ function ReviewReply({
             if (changed) setEditing(false);
             return changed;
           }}
-          submitLabel="Save reply"
+          submitLabel={text.saveReply}
         />
       ) : <p>{reply.body}</p>}
       {!canMutate || editing || (!ownReply && !canDeleteAny) ? null : (
         <div className="as-comment-reply__actions">
           {ownReply ? (
             <button className="as-button" onClick={() => setEditing(true)} type="button">
-              Edit
+              {text.edit}
             </button>
           ) : null}
           <button
@@ -934,7 +999,7 @@ function ReviewReply({
             onClick={() => void remove()}
             type="button"
           >
-            {deleting ? "Deleting…" : "Delete"}
+            {deleting ? text.deleting : text.delete}
           </button>
         </div>
       )}

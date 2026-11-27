@@ -8,6 +8,28 @@ import {
   type TestInstallation,
 } from "../support/runtime-harness.js";
 
+/**
+ * A browser context whose interface language is English. The application
+ * defaults to Traditional Chinese; these suites assert the English copy, so
+ * each context stores the English choice before any page script runs.
+ */
+export async function englishContext(
+  browser: Browser,
+  options: Parameters<Browser["newContext"]>[0] = {},
+): Promise<BrowserContext> {
+  const context = await browser.newContext(options);
+  await context.addInitScript(() => {
+    // Only the application document: sandboxed artifact frames have no storage.
+    if (window.top !== window) return;
+    try {
+      window.localStorage.setItem("artifact-review-locale", "en");
+    } catch {
+      // A document without storage keeps the default language.
+    }
+  });
+  return context;
+}
+
 /** One browser test's own installation, server, and signed-in page. */
 export interface BrowserFixture {
   readonly context: BrowserContext;
@@ -22,7 +44,7 @@ export async function startBrowserFixture(
 ): Promise<BrowserFixture> {
   const installation = await createTestInstallation();
   const server = await startTestServer(installation);
-  const context = await browser.newContext(options);
+  const context = await englishContext(browser, options);
   const page = await context.newPage();
   return {context, installation, page, server};
 }
@@ -58,7 +80,9 @@ export async function browserStorage(page: Page): Promise<{
     indexedDatabaseNames: (await indexedDB.databases())
       .map((database) => database.name)
       .filter((name): name is string => name !== undefined),
-    localStorageKeys: Object.keys(localStorage),
-    sessionStorageKeys: Object.keys(sessionStorage),
+    // Sorted, so a comparison names the keys and never depends on the
+    // browser's enumeration order.
+    localStorageKeys: Object.keys(localStorage).toSorted(),
+    sessionStorageKeys: Object.keys(sessionStorage).toSorted(),
   }));
 }

@@ -4,6 +4,7 @@ title: CI：macOS portability job 在整套平行測試下 lifecycle CLI 測試�
 status: To Do
 assignee: []
 created_date: '2026-11-27T18:44:05Z'
+updated_date: '2026-11-27T19:12:02Z'
 labels: []
 dependencies:
   - ARTSV-9
@@ -24,3 +25,9 @@ PR #4（ARTSV-9）把 macOS job 從已停用的 macos-14 改成 macos-15 後，�
 - [ ] #2 macOS portability job 在 main 上通過，且不靠放寬測試逾時或跳過測試
 - [ ] #3 若 macOS arm64 容量長期不足，記錄替代方案（例如 macos-15-intel）與取捨
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-28：main push 的 run 46051581432 macOS 有取得 runner，但整個 job 超過 timeout-minutes: 12 被取消（前一次 PR run 是 8.5 分鐘跑到 lifecycle-cli 逾時）。兩次都指向 macOS runner 上整套測試太慢；處理時要一併檢討 job 的 12 分鐘上限與 vitest worker 數。
+<!-- SECTION:NOTES:END -->

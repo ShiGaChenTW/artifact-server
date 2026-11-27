@@ -4,12 +4,13 @@ title: 完整 verify:iteration、code review、合併改版
 status: To Do
 assignee: []
 created_date: '2026-11-25T13:19:00Z'
-updated_date: '2026-11-25T14:07:00Z'
+updated_date: '2026-11-25T21:20:00Z'
 labels: []
 dependencies:
   - ARTSV-6.3
   - ARTSV-6.4
   - ARTSV-6.5
+  - ARTSV-6.10
 parent_task_id: ARTSV-6
 priority: high
 ordinal: 32000

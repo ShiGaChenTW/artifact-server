@@ -1,11 +1,11 @@
 ---
 id: ARTSV-8
 title: Dashboard：依專案分類報告總覽與鑽取
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-26T20:19:00Z'
-updated_date: '2026-11-28T04:45:32Z'
+updated_date: '2026-11-28T14:26:44Z'
 labels:
   - project-reports
 dependencies: []
@@ -56,4 +56,6 @@ ordinal: 33000
 - 驗證：npx -y pnpm@10.34.3 verify:iteration → EXIT 0（vitest 404/404、Playwright 98/98、conformance ledger 357 項有效）。
 - 效能：perf:baseline 前後同機執行，指標於雜訊範圍（該基準不涵蓋 insights）；另以 31 專案×10 artifact×2 版本實測 readInsights：全部專案中位數 2.6→2.8ms、單一專案 1.6→1.85ms（多算 5 項欄位）。
 - 已清除（purge）依 file-management-spec 9.4 不回收位元組，故仍計入保留位元組；零專案狀態以瀏覽器 route 改寫回應驗證（實際 installation 必有預設專案）。
+
+2026-11-28 PR #6 已合併進 main（Scott 指示直接合併；fork 的 Actions 仍停用，沒有完整 CI 結果）。
 <!-- SECTION:NOTES:END -->

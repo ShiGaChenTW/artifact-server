@@ -154,6 +154,23 @@ test.describe("Review board", () => {
     await expect(page.locator(".as-board-connections path")).toHaveAttribute("d", /^M.+C/u);
   });
 
+  test("UXR-017-B: text-only anchors connect to their selected cards", async () => {
+    const {page} = fixture;
+    const artifactId = new URL(page.url()).searchParams.get("artifact") ?? "";
+    const versionId = new URL(page.url()).searchParams.get("version") ?? "";
+    const thread = (await createThreadOverApi(fixture, {
+      artifactId, versionId, path: "index.html", body: "Text selection without a selector", idempotencyKey: "board-text-anchor-01",
+      anchor: {htmlAnchor: null, originalText: "Long report context"},
+    })).id;
+    await page.reload();
+    await page.getByRole("button", {name: "Review board", exact: true}).click();
+    const card = page.locator(`[data-board-thread="${thread}"]`);
+    await card.click({position: {x: 8, y: 8}});
+    await page.locator(".as-version-trigger").hover();
+    await expect(card).toHaveAttribute("aria-current", "true");
+    await expect(page.locator(".as-board-connections path")).toHaveAttribute("d", /^M.+C/u);
+  });
+
   test("UXR-017-F: comparison clears single-document outline and geometry", async () => {
     const {page} = fixture;
     await page.getByRole("button", {name: "Review board", exact: true}).click();

@@ -18,6 +18,32 @@ export function withReaderBridge(html: string): string {
     const headingIds = new WeakMap();
     let nextId = 0;
     const send = data => parent.postMessage({...data, v: ${reviewProtocolVersion}}, hostOrigin);
+    // Text selections may have no CSS selector. Resolve the exact quote across
+    // adjacent text nodes without treating scripts or annotation UI as content.
+    function quoteRect(quote) {
+      if (typeof quote !== 'string' || !quote.trim()) return null;
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+        acceptNode: node => node.parentElement?.closest('script,style,noscript,[data-plannotator-vim-ui]')
+          ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
+      });
+      const nodes = [];
+      let text = '';
+      let node;
+      while ((node = walker.nextNode())) {
+        nodes.push({node, start: text.length});
+        text += node.textContent;
+      }
+      const start = text.indexOf(quote);
+      if (start < 0) return null;
+      const end = start + quote.length;
+      const first = nodes.find(item => item.start + item.node.length > start);
+      const last = nodes.find(item => item.start + item.node.length >= end);
+      if (!first || !last) return null;
+      const range = document.createRange();
+      range.setStart(first.node, start - first.start);
+      range.setEnd(last.node, end - last.start);
+      return range.getBoundingClientRect();
+    }
     function measure() {
       scheduled = false;
       headings = Array.from(document.querySelectorAll('h1,h2,h3')).filter(node =>
@@ -37,11 +63,14 @@ export function withReaderBridge(html: string): string {
       const rects = [];
       for (const annotation of annotations) {
         const anchor = annotation.anchor?.htmlAnchor;
-        if (!anchor || typeof anchor.selector !== 'string') continue;
-        let node;
-        try {node = document.querySelector(anchor.selector);} catch {continue;}
-        if (!node || !node.getClientRects().length) continue;
-        const rect = node.getBoundingClientRect();
+        let rect;
+        if (anchor && typeof anchor.selector === 'string') {
+          let node;
+          try {node = document.querySelector(anchor.selector);} catch {continue;}
+          if (!node || !node.getClientRects().length) continue;
+          rect = node.getBoundingClientRect();
+        } else rect = quoteRect(annotation.anchor?.originalText);
+        if (!rect || rect.width <= 0 || rect.height <= 0) continue;
         if (rect.bottom <= 0 || rect.top >= innerHeight || rect.right <= 0 || rect.left >= innerWidth) continue;
         rects.push({threadId: annotation.threadId, x: Math.max(0, rect.x), y: Math.max(0, rect.y), width: Math.min(innerWidth, rect.right) - Math.max(0, rect.x), height: Math.min(innerHeight, rect.bottom) - Math.max(0, rect.y)});
       }

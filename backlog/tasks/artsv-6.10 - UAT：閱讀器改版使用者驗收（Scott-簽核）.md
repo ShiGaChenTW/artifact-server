@@ -1,9 +1,10 @@
 ---
 id: ARTSV-6.10
 title: UAT：閱讀器改版使用者驗收（Scott 簽核）
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-25T21:20:00Z'
+updated_date: '2026-11-28T01:29:24Z'
 labels: []
 dependencies:
   - ARTSV-6.9
@@ -20,8 +21,14 @@ E2E 通過後，由 Scott 在接近正式的環境親手驗收：改版建置後
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 驗收清單已產出，情境、步驟、預期結果寫清楚
+- [x] #1 驗收清單已產出，情境、步驟、預期結果寫清楚
 - [ ] #2 Scott 在本機與 Tailscale 轉發兩種連線都跑過清單
 - [ ] #3 所有不通過項目已修正並複驗，或經 Scott 同意延後並另開單
 - [ ] #4 Scott 簽核（清單上註記日期與結論），之後才能進 ARTSV-6.8 合併
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-28：驗收清單 ~/Documents/-Inbox/2026-11-28_review_reader-redesign-uat.md 已產出（R01–R07），先在 8877 開發版跑並補種 UAT6 資料。查到 launchd 沒有 local.artifact-server、8787 被 atlas.cli 佔用，正式服務那一輪待 Scott 決定。
+<!-- SECTION:NOTES:END -->

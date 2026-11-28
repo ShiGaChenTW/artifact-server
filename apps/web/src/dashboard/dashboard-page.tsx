@@ -10,7 +10,8 @@ import {readerText} from "@/i18n/messages/reader";
 import {AppTopBar} from "../review/app-shell.tsx";
 import {DashboardAttention} from "./dashboard-attention.tsx";
 import {ActivitySection} from "./dashboard-activity.tsx";
-import {dashboardWindows} from "./dashboard-format.ts";
+import {dashboardHref, dashboardWindows, defaultDashboardWindow} from "./dashboard-format.ts";
+import {ProjectsSection} from "./dashboard-projects.tsx";
 import {
   DashboardHeadline,
   OverviewSection,
@@ -216,7 +217,19 @@ export function DashboardPage({
                 id="dashboard-panel-overview"
                 role="tabpanel"
               >
+                <div className="as-dashboard__stack">
+                {state.insights.projectId === null
+                  ? (
+                    <ProjectsSection
+                      filesAvailable={filesCapabilities.fileOverview}
+                      insights={state.insights}
+                      now={now}
+                      windowLabel={windowLabel}
+                    />
+                  )
+                  : null}
                 <OverviewSection insights={state.insights} now={now} projectNames={projectNames} />
+                </div>
               </div>
               <div
                 aria-labelledby="dashboard-tab-storage"
@@ -279,15 +292,13 @@ function readSelection(): DashboardSelection {
   const projectId = query.get("project");
   return {
     projectId: projectId === null || projectId === "" ? null : projectId,
-    window: chosen?.value ?? "30d",
+    window: chosen?.value ?? defaultDashboardWindow,
   };
 }
 
 function writeSelection(selection: DashboardSelection): void {
-  const query = new URLSearchParams();
-  if (selection.projectId !== null) query.set("project", selection.projectId);
-  if (selection.window !== "30d") query.set("window", selection.window);
-  const search = query.size === 0 ? "" : `?${query}`;
+  const href = dashboardHref(selection.projectId, selection.window);
+  const search = href.includes("?") ? href.slice(href.indexOf("?")) : "";
   if (window.location.search !== search) {
     window.history.replaceState(window.history.state, "", `${window.location.pathname}${search}`);
   }

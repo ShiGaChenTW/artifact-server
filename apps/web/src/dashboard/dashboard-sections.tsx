@@ -85,7 +85,7 @@ export function DashboardHeadline({insights}: {readonly insights: Insights}) {
 }
 
 /** A dashboard section: a heading on a rule, quiet context to its right. */
-function SectionCard({
+export function SectionCard({
   children,
   description,
   id,
@@ -115,7 +115,7 @@ function Subheading({children}: {readonly children: ReactNode}) {
   );
 }
 
-function Quiet({children}: {readonly children: ReactNode}) {
+export function Quiet({children}: {readonly children: ReactNode}) {
   return <p className="as-dashboard-quiet">{children}</p>;
 }
 
@@ -220,38 +220,6 @@ export function OverviewSection({
           )}
       </div>
       <div className="grid min-w-0 content-start gap-6">
-      {showProjects
-        ? (
-          <div className="grid min-w-0 grid-cols-1 gap-3">
-            <Subheading>{overviewText.projects}</Subheading>
-            <Table className="as-page-table">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{overviewText.project}</TableHead>
-                  <TableHead className="text-right">{overviewText.artifacts}</TableHead>
-                  <TableHead className="text-right">{overviewText.versions}</TableHead>
-                  <TableHead className="text-right">{overviewText.lastVersion}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {overview.projects.map((project) => (
-                  <TableRow key={project.projectId}>
-                    <TableCell>
-                      {project.name}
-                      {project.archived ? <span className="as-dashboard-quiet-inline">{overviewText.archived}</span> : null}
-                    </TableCell>
-                    <TableCell className="text-right font-mono tabular-nums">{project.artifactCount}</TableCell>
-                    <TableCell className="text-right font-mono tabular-nums">{project.versionCount}</TableCell>
-                    <TableCell className="text-right">
-                      {project.latestVersionAt === null ? overviewText.noneYet : formatRelativeTime(project.latestVersionAt, now)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )
-        : null}
       <div className="grid min-w-0 grid-cols-1 gap-3">
         <Subheading>{overviewText.tags}</Subheading>
         {overview.tags.length === 0

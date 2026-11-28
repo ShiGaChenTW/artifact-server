@@ -6,6 +6,7 @@ import type {
 } from "@/api/client";
 import {intlLocale} from "@/i18n/locale";
 import {dashboardText} from "@/i18n/messages/dashboard";
+import {dashboardPath, filesPath} from "../review/review-routes.ts";
 
 const windowText = dashboardText.window;
 const stateText = dashboardText.dispatchState;
@@ -132,4 +133,26 @@ export function percentage(part: number, whole: number): number | null {
 /** Link to one artifact inside the review application. */
 export function artifactReviewHref(projectId: string, artifactId: string): string {
   return `/review?${new URLSearchParams({artifact: artifactId, project: projectId})}`;
+}
+
+/** The window a dashboard reader gets when the URL names none. */
+export const defaultDashboardWindow: InsightWindow = "30d";
+
+/**
+ * The dashboard URL for one scope and window. The default window stays out of
+ * the URL, so a refresh or a shared link reads exactly this selection.
+ */
+export function dashboardHref(projectId: string | null, window: InsightWindow): string {
+  const query = new URLSearchParams();
+  if (projectId !== null) query.set("project", projectId);
+  if (window !== defaultDashboardWindow) query.set("window", window);
+  return query.size === 0 ? dashboardPath : `${dashboardPath}?${query}`;
+}
+
+/**
+ * Where one project's own artifact list lives: the Files page filtered to the
+ * project when the installation offers it, otherwise that project's Review.
+ */
+export function projectArtifactsHref(projectId: string, filesAvailable: boolean): string {
+  return `${filesAvailable ? filesPath : "/review"}?${new URLSearchParams({project: projectId})}`;
 }

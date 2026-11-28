@@ -1,8 +1,6 @@
 import type {ReactNode} from "react";
 
 import type {Insights} from "@/api/client";
-import {StatusBadge} from "@/components/product";
-import {Card, CardContent, CardDescription, CardHeader, CardTitle} from "@/components/ui/card";
 import {Progress} from "@/components/ui/progress";
 import {
   Table,
@@ -13,6 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {dashboardText} from "@/i18n/messages/dashboard";
+import {readerText} from "@/i18n/messages/reader";
 import {formatBytes, formatRelativeTime, formatTimestamp} from "@/lib/presentation";
 import {GrowthChart, TagChart} from "./dashboard-charts.tsx";
 import {
@@ -27,7 +26,7 @@ const overviewText = dashboardText.overview;
 const reviewText = dashboardText.review;
 const storageText = dashboardText.storage;
 
-/** One counted reading in the readings panel: label, figure, then context. */
+/** One counted reading: label, figure, then context. */
 function Reading({
   detail,
   label,
@@ -38,16 +37,19 @@ function Reading({
   readonly value: string;
 }) {
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-1 bg-card px-6 py-4">
-      <dt className="text-sm font-medium text-muted-foreground">{label}</dt>
-      <dd className="font-mono text-xl tabular-nums slashed-zero">{value}</dd>
-      <dd className="col-span-2 text-sm text-muted-foreground">{detail}</dd>
+    <div className="as-metric">
+      <dt>{label}</dt>
+      <dd>
+        <span className="as-metric__value">{value}</span>
+        <span className="as-metric__detail">{detail}</span>
+      </dd>
     </div>
   );
 }
 
 /**
- * The dashboard overview readings in a compact grid.
+ * The dashboard readings as a two-by-two definition grid divided by rules,
+ * never boxed cards.
  */
 export function DashboardHeadline({insights}: {readonly insights: Insights}) {
   const {overview, review, storage} = insights;
@@ -55,16 +57,8 @@ export function DashboardHeadline({insights}: {readonly insights: Insights}) {
   const inFlight = review.dispatches.queued + review.dispatches.claimed +
     review.dispatches.delivered;
   return (
-    <section
-      aria-label={readingsText.label}
-      className="grid min-w-0 gap-px self-start overflow-hidden rounded-[var(--radius-card)] border border-border bg-border"
-    >
-      <dl className="grid gap-px">
-        <Reading
-          detail={readingsText.acrossEveryVersion(formatBytes(storage.logicalBytes))}
-          label={readingsText.stored}
-          value={formatBytes(storage.storedBytes)}
-        />
+    <section aria-label={readingsText.label} className="as-dashboard-section">
+      <dl className="as-metrics">
         <Reading
           detail={readingsText.versionsDetail(overview.versionCount, overview.versionsInWindow, inWindow)}
           label={readingsText.artifacts}
@@ -80,41 +74,90 @@ export function DashboardHeadline({insights}: {readonly insights: Insights}) {
           label={readingsText.dispatches}
           value={String(review.dispatchesInWindow)}
         />
+        <Reading
+          detail={readingsText.acrossEveryVersion(formatBytes(storage.logicalBytes))}
+          label={readingsText.stored}
+          value={formatBytes(storage.storedBytes)}
+        />
       </dl>
     </section>
   );
 }
 
+/** A dashboard section: a heading on a rule, quiet context to its right. */
 function SectionCard({
   children,
   description,
+  id,
   title,
 }: {
   readonly children: ReactNode;
   readonly description: string;
+  readonly id: string;
   readonly title: string;
 }) {
   return (
-    <Card className="min-w-0">
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent className="grid min-w-0 grid-cols-1 gap-6">{children}</CardContent>
-    </Card>
+    <section aria-labelledby={id} className="as-dashboard-section">
+      <div className="as-dashboard-section__head">
+        <h2 id={id}>{title}</h2>
+        <span className="as-dashboard-section__aside">{description}</span>
+      </div>
+      <div className="as-dashboard-section__body">{children}</div>
+    </section>
   );
 }
 
 function Subheading({children}: {readonly children: ReactNode}) {
   return (
-    <h3 className="text-sm font-medium text-muted-foreground">
+    <h3 className="as-dashboard-subheading">
       {children}
     </h3>
   );
 }
 
 function Quiet({children}: {readonly children: ReactNode}) {
-  return <p className="text-sm text-muted-foreground">{children}</p>;
+  return <p className="as-dashboard-quiet">{children}</p>;
+}
+
+/** The latest artifacts as a divided list, each with its version number. */
+export function RecentArtifacts({
+  insights,
+  now,
+  onShowOverview,
+  projectNames,
+}: {
+  readonly insights: Insights;
+  readonly now: number;
+  readonly onShowOverview: () => void;
+  readonly projectNames: ReadonlyMap<string, string>;
+}) {
+  const recent = insights.overview.recentArtifacts.slice(0, 5);
+  return (
+    <section aria-labelledby="dashboard-recent-title" className="as-dashboard-section">
+      <div className="as-dashboard-section__head">
+        <h2 id="dashboard-recent-title">{readerText.dashboard.recent}</h2>
+        <button className="as-dashboard-link as-dashboard-section__aside" onClick={onShowOverview} type="button">
+          {readerText.dashboard.viewOverview}
+        </button>
+      </div>
+      {recent.length === 0 ? <Quiet>{overviewText.noArtifacts}</Quiet> : (
+        <ul className="as-recent">
+          {recent.map((artifact) => (
+            <li key={artifact.artifactId}>
+              <a href={artifactReviewHref(artifact.projectId, artifact.artifactId)}>
+                <span className="as-recent__name">{artifact.name}</span>
+                <span className="as-recent__meta">
+                  <span>{projectNames.get(artifact.projectId) ?? artifact.projectId}</span>
+                  <span title={formatTimestamp(artifact.latestVersionAt)}>{formatRelativeTime(artifact.latestVersionAt, now)}</span>
+                </span>
+                <span className="as-version-number">v{artifact.latestVersionNumber}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
 }
 
 /** What exists, what changed recently, and how it is tagged. */
@@ -132,6 +175,7 @@ export function OverviewSection({
   return (
     <SectionCard
       description={overviewText.description}
+      id="dashboard-overview-title"
       title={overviewText.title}
     >
       <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
@@ -140,7 +184,7 @@ export function OverviewSection({
         {overview.recentArtifacts.length === 0
           ? <Quiet>{overviewText.noArtifacts}</Quiet>
           : (
-            <Table>
+            <Table className="as-page-table">
               <TableHeader>
                 <TableRow>
                   <TableHead>{overviewText.artifact}</TableHead>
@@ -180,7 +224,7 @@ export function OverviewSection({
         ? (
           <div className="grid min-w-0 grid-cols-1 gap-3">
             <Subheading>{overviewText.projects}</Subheading>
-            <Table>
+            <Table className="as-page-table">
               <TableHeader>
                 <TableRow>
                   <TableHead>{overviewText.project}</TableHead>
@@ -194,7 +238,7 @@ export function OverviewSection({
                   <TableRow key={project.projectId}>
                     <TableCell>
                       {project.name}
-                      {project.archived ? <span className="ml-2"><StatusBadge>{overviewText.archived}</StatusBadge></span> : null}
+                      {project.archived ? <span className="as-dashboard-quiet-inline">{overviewText.archived}</span> : null}
                     </TableCell>
                     <TableCell className="text-right font-mono tabular-nums">{project.artifactCount}</TableCell>
                     <TableCell className="text-right font-mono tabular-nums">{project.versionCount}</TableCell>
@@ -227,65 +271,58 @@ export function OverviewSection({
 export function ReviewSection({
   insights,
   now,
+  windowLabel,
 }: {
   readonly insights: Insights;
   readonly now: number;
+  readonly windowLabel: string;
 }) {
   const {review} = insights;
   const total = review.openThreads + review.resolvedThreads;
   const resolvedShare = percentage(review.resolvedThreads, total);
   return (
-    <SectionCard
-      description={reviewText.description}
-      title={reviewText.title}
-    >
-      <div className="grid min-w-0 grid-cols-1 gap-3">
-        <div className="flex items-baseline justify-between gap-4">
-          <Subheading>{reviewText.resolved}</Subheading>
-          <span className="font-mono text-sm tabular-nums">
-            {reviewText.resolvedOf(review.resolvedThreads, total)}
-          </span>
-        </div>
-        {resolvedShare === null
-          ? <Quiet>{reviewText.noThreads}</Quiet>
-          : <Progress aria-label={reviewText.resolvedThreads} value={resolvedShare} />}
-        <Quiet>
-          {reviewText.openSummary(review.openThreads, review.openDispatchedThreads)}
-          {review.oldestOpenThreadAt === null
-            ? null
-            : reviewText.oldestOpened(formatRelativeTime(review.oldestOpenThreadAt, now))}
-        </Quiet>
+    <SectionCard description={windowLabel} id="dashboard-review-title" title={reviewText.title}>
+      <div className="as-progress-row">
+        <span>{reviewText.resolved}</span>
+        <span className="as-mono">{reviewText.resolvedOf(review.resolvedThreads, total)}</span>
       </div>
-      <div className="grid min-w-0 grid-cols-1 gap-3" id="dispatches">
+      {resolvedShare === null
+        ? <Quiet>{reviewText.noThreads}</Quiet>
+        : (
+          <div aria-label={reviewText.resolvedThreads} aria-valuemax={100} aria-valuemin={0} aria-valuenow={resolvedShare}
+            className="as-progress" role="progressbar">
+            <span style={{width: `${resolvedShare}%`}} />
+          </div>
+        )}
+      <Quiet>
+        {reviewText.openSummary(review.openThreads, review.openDispatchedThreads)}
+        {review.oldestOpenThreadAt === null
+          ? null
+          : reviewText.oldestOpened(formatRelativeTime(review.oldestOpenThreadAt, now))}
+      </Quiet>
+      <div id="dispatches">
         <Subheading>{reviewText.dispatches}</Subheading>
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
+        <dl className="as-dispatch-states">
           {dispatchStates.map((entry) => (
-            <div className="flex items-center justify-between gap-3" key={entry.state}>
-              <dt>
-                <StatusBadge tone={review.dispatches[entry.state] > 0 ? entry.tone : "neutral"}>
-                  {entry.label}
-                </StatusBadge>
-              </dt>
-              <dd className="font-mono tabular-nums">{review.dispatches[entry.state]}</dd>
+            <div data-tone={review.dispatches[entry.state] > 0 ? entry.tone : "neutral"} key={entry.state}>
+              <dt>{entry.label}</dt>
+              <dd>{review.dispatches[entry.state]}</dd>
             </div>
           ))}
         </dl>
       </div>
-      <div className="grid min-w-0 grid-cols-1 gap-3">
+      <div>
         <Subheading>{reviewText.mostOpenThreads}</Subheading>
         {review.openThreadsByArtifact.length === 0
           ? <Quiet>{reviewText.nothingWaiting}</Quiet>
           : (
-            <ul className="grid grid-cols-1 gap-2 text-sm">
+            <ul className="as-dashboard-rows">
               {review.openThreadsByArtifact.map((artifact) => (
-                <li className="flex min-w-0 items-center justify-between gap-4" key={artifact.artifactId}>
-                  <a
-                    className="min-w-0 truncate underline-offset-4 hover:underline"
-                    href={artifactReviewHref(artifact.projectId, artifact.artifactId)}
-                  >
+                <li key={artifact.artifactId}>
+                  <a className="as-dashboard-link" href={artifactReviewHref(artifact.projectId, artifact.artifactId)}>
                     {artifact.name}
                   </a>
-                  <span className="font-mono tabular-nums">{artifact.openThreads}</span>
+                  <span className="as-mono">{artifact.openThreads}</span>
                 </li>
               ))}
             </ul>
@@ -310,6 +347,7 @@ export function StorageSection({
   return (
     <SectionCard
       description={storageText.description}
+      id="dashboard-storage-title"
       title={storageText.title}
     >
       <dl className="grid grid-cols-[repeat(2,minmax(0,1fr))] gap-4 sm:grid-cols-[repeat(4,minmax(0,1fr))]">
@@ -334,7 +372,7 @@ export function StorageSection({
           : <GrowthChart bucket={storage.growthBucket} points={storage.growth} />}
         <details className="text-sm">
           <summary className="cursor-pointer text-muted-foreground">{storageText.viewAsTable}</summary>
-          <Table>
+          <Table className="as-page-table">
             <TableHeader>
               <TableRow>
                 <TableHead>{storage.growthBucket === "week" ? storageText.weekOf : storageText.day}</TableHead>

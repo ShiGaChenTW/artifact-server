@@ -15,11 +15,12 @@ import {
   startTestServer,
 } from "../support/runtime-harness.js";
 import {
-  localLogin,
-  startBrowserFixture,
-  stopBrowserFixture,
   type BrowserFixture,
   englishContext,
+  localLogin,
+  openDrawer,
+  startBrowserFixture,
+  stopBrowserFixture,
 } from "./browser-fixture.js";
 import {createThreadOverApi} from "./comment-api.js";
 
@@ -119,7 +120,7 @@ test.describe("Review send-all", () => {
       await page.goto(
         `${fixture.server.baseUrl}/review?project=prj_default&artifact=${published.artifact.id}&version=${published.version.id}`,
       );
-      await page.getByRole("tab", {name: "Comments"}).click();
+      await openDrawer(page, "comments");
       await expect(page.getByRole("button", {
         name: "Send all open (101) to builder",
       })).toBeVisible();
@@ -200,7 +201,7 @@ test.describe("Review send-all", () => {
       await page.goto(
         `${fixture.server.baseUrl}/review?project=prj_default&artifact=${published.artifact.id}&version=${published.version.id}`,
       );
-      await page.getByRole("tab", {name: "Comments"}).click();
+      await openDrawer(page, "comments");
       await expect(page.getByText("No agent connected — connect one to send."))
         .toBeVisible();
 

@@ -223,7 +223,8 @@ test.describe("More preview types", () => {
       await expect(reviewFrame.frameLocator("iframe")
         .getByRole("heading", {level: 1, name: "Preview heading"})).toBeVisible();
       // Markdown shares the HTML review sandbox, so it can be annotated too.
-      await expect(fixture.page.getByRole("button", {name: /^Annotate mode:/u}))
+      await expect(fixture.page.getByRole("group", {name: "Preview mode"})
+        .getByRole("button", {name: "Annotate mode", exact: true}))
         .toHaveAttribute("aria-pressed", "true");
 
       await openPath(fixture, published, "docs/hostile.md");

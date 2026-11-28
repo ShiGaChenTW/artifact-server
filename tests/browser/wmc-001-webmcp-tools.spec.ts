@@ -4,7 +4,13 @@ import {z} from "zod";
 
 import {ApiClient, issueApiKey, signInAdministrator} from "../support/agent-dispatch.js";
 import {publishNew} from "../support/publishing.js";
-import {localLogin, startBrowserFixture, stopBrowserFixture, englishContext} from "./browser-fixture.js";
+import {
+  englishContext,
+  localLogin,
+  openDrawer,
+  startBrowserFixture,
+  stopBrowserFixture,
+} from "./browser-fixture.js";
 import {createThreadOverApi, listThreadsOverApi} from "./comment-api.js";
 import {
   callTool,
@@ -96,7 +102,7 @@ test.describe("WMC-001 WebMCP review tools", () => {
       await page.goto(
         `${fixture.server.baseUrl}/review?project=prj_default&artifact=${artifactId}&version=${published.version.id}`,
       );
-      await page.getByRole("tab", {name: "Comments"}).click();
+      await openDrawer(page, "comments");
       await expect(page.getByRole("article")).toHaveCount(2);
 
       // Registration: exactly the seven provenance-prefixed tools.
@@ -210,7 +216,7 @@ test.describe("WMC-001 WebMCP review tools", () => {
       fixture.page.on("pageerror", (error) => consoleMessages.push(`pageerror: ${error.message}`));
       await localLogin(fixture);
       await fixture.page.goto(reviewUrl);
-      await fixture.page.getByRole("tab", {name: "Comments"}).click();
+      await openDrawer(fixture.page, "comments");
       await expect(fixture.page.getByText("No open comments on this version.")).toBeVisible();
       expect(await fixture.page.evaluate(() => "modelContext" in document)).toBe(false);
       expect(consoleMessages).toEqual([]);
@@ -224,7 +230,7 @@ test.describe("WMC-001 WebMCP review tools", () => {
         await installFakeModelContext(toggled);
         const page = await toggled.newPage();
         await page.goto(reviewUrl);
-        await expect(page.getByRole("tab", {name: "Comments"})).toBeVisible();
+        await expect(page.getByRole("button", {name: /^Comments \d/u})).toBeVisible();
         await expect.poll(() => registeredToolNames(page)).toEqual([...expectedToolNames]);
 
         await page.evaluate(() => {
@@ -234,7 +240,7 @@ test.describe("WMC-001 WebMCP review tools", () => {
         await expect.poll(() => registeredToolNames(page)).toEqual([]);
 
         await page.goto(reviewUrl);
-        await expect(page.getByRole("tab", {name: "Comments"})).toBeVisible();
+        await expect(page.getByRole("button", {name: /^Comments \d/u})).toBeVisible();
         expect(await registeredToolNames(page)).toEqual([]);
 
         await page.goto(`${fixture.server.baseUrl}/review/settings/mcp`);
@@ -255,7 +261,7 @@ test.describe("WMC-001 WebMCP review tools", () => {
         await expect(toggle).not.toBeChecked();
         await toggle.check();
         await page.goto(reviewUrl);
-        await expect(page.getByRole("tab", {name: "Comments"})).toBeVisible();
+        await expect(page.getByRole("button", {name: /^Comments \d/u})).toBeVisible();
         await expect.poll(() => registeredToolNames(page)).toEqual([...expectedToolNames]);
       } finally {
         await toggled.close();

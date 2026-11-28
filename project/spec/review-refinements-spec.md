@@ -16,7 +16,7 @@ The redesigned interface shares one design language, but the review loop still h
 - **Awaiting confirmation (UXR-003).** The comments filters add "Awaiting you": open threads whose latest dispatch is `addressed`. Cards in the Open filter show the dispatch state chip when a dispatch exists.
 - **Quieter comment cards (UXR-004).** Clicking or pressing Enter on a card selects it and reveals its anchor in the page. Resolve stays visible on every card; reply and send-to-agent appear on the selected card and on hover or focus within. Split-button triggers are never truncated. With no connected agent, the send-all control becomes a sentence with a "Connect an agent" link instead of a filled button.
 - **Submit with ⌘↵ (UXR-005).** Every comment and reply composer submits with ⌘↵ / Ctrl↵, with the same validation as the button.
-- **Command palette and shortcut sheet (UXR-006).** ⌘K / Ctrl K opens a palette that searches artifacts in the current project and lists commands (switch version, annotate mode, send open comments, compare versions, toggle theme). `?` opens a sheet listing every shortcut, including the existing J/K, F, [ ], Esc and ⌘\. Both trap focus, close on Esc and restore focus.
+- **Command palette and shortcut sheet (UXR-006).** ⌘K / Ctrl K opens a palette that searches artifacts in the current project and lists commands (switch version, annotate mode, send open comments, compare versions, toggle theme). `?` opens a sheet listing every shortcut, including J/K, ← →, T, C, V, F, [ ], Esc and ⌘\. Both trap focus, close on Esc and restore focus.
 - **Side-by-side versions (UXR-007).** The Compare tab adds a "Side by side" view: the two selected versions render in two sandboxed frames with optional synchronized scrolling. The file-list comparison stays the default.
 - **Focus toolbar starts collapsed (UXR-008).** Entering focus mode collapses the floating toolbar to its restore button, which shows the open-thread count; the first time per browser, a one-line hint names ⌘\. Existing collapse and restore behavior stays.
 
@@ -24,7 +24,7 @@ Deferred: desktop notifications for finished dispatches, and element-level comme
 
 ## 3. Proposed ledger entries
 
-Added to `conformance.yml` on November 24, 2026.
+Added to `conformance.yml` on November 24, 2026. On November 25, 2026 the UXR-004-F and UXR-006-B wording below was updated for the reader layout in section 4.
 
 ```yaml
   - id: UXR-001
@@ -73,7 +73,7 @@ Added to `conformance.yml` on November 24, 2026.
     source: {file: review-refinements-spec.md, anchor: contract}
     acceptance:
       behavior: {id: UXR-004-B, description: "Activating a card by click or Enter selects it and scrolls its anchor into view; reply and send controls are reachable by keyboard on the focused card; with no agent the panel shows the connect prompt."}
-      failure: {id: UXR-004-F, description: "Hidden actions are never removed from the keyboard order of the focused card, and no control label is truncated at the default inspector width."}
+      failure: {id: UXR-004-F, description: "Hidden actions are never removed from the keyboard order of the focused card, and no control label is truncated at the default comments drawer width."}
     deployments: [local]
     status: specified
     depends_on: [CMT-019]
@@ -98,7 +98,7 @@ Added to `conformance.yml` on November 24, 2026.
     owner: web-application
     source: {file: review-refinements-spec.md, anchor: contract}
     acceptance:
-      behavior: {id: UXR-006-B, description: "Control-K, typing part of an artifact name, and Enter opens that artifact; a command entry enters annotate mode; ? opens the sheet listing J/K, F, [, ], Esc, Command-backslash, Command-K, and Command-Enter."}
+      behavior: {id: UXR-006-B, description: "Control-K, typing part of an artifact name, and Enter opens that artifact; a command entry enters annotate mode; ? opens the sheet listing J/K, the left and right arrows, T, C, V, F, [, ], Esc, Command-backslash, Command-K, and Command-Enter."}
       failure: {id: UXR-006-F, description: "Neither opens while typing in an input or composer, Escape closes and restores focus to the previous element, and an empty search shows no results without errors."}
     deployments: [local]
     status: specified
@@ -130,4 +130,56 @@ Added to `conformance.yml` on November 24, 2026.
     status: specified
     depends_on: [PUB-013]
     evidence: []
+```
+
+## 4. Reader layout
+
+**Added:** November 25, 2026 (Backlog ARTSV-6, design proposal `2026-11-25_proposal_reader-redesign`).
+
+Review is content first. The preview fills the window under one shared top bar, and everything that used to sit in fixed columns beside it now lives in drawers that start closed on every visit:
+
+- **Drawers (UXR-009).** The catalog (目錄) opens on the left; comments (留言) and version information (版本資訊) share the right side, so opening one closes the other. Version information holds the former inspector tabs: Versions, Details, Files, Activity, and Compare. Each drawer opens from an always-visible trigger that exposes `aria-expanded` and `aria-controls`, and each drawer is a labeled region. On a wide window an open drawer narrows the preview; below 760 pixels it overlays the preview instead, never resizes it, and leaves at least 56 pixels of it visible. The page never scrolls sideways. Closing a drawer returns focus to its trigger.
+- **Drawer and step shortcuts (UXR-010).** T, C, and V toggle the catalog, comments, and version drawers and move focus to the opened drawer's title; `[` and `]` remain aliases for T and C. ← and → (and the existing J and K) step to the previous or next artifact. Esc closes the most recently opened drawer before it leaves annotate or focus mode. Chords with Shift, Alt, Control, or Command, keys typed in editable fields, and keys pressed inside the preview frame are never treated as shortcuts. The shortcut sheet from UXR-006 lists every one of these keys.
+- **Bottom bar (UXR-011).** A bar under the preview shows previous and next controls, the position in the catalog ("2 / 7"), the selected file path, file count and size, and on wide windows the shortcut hints. Stepping by button or key selects the next artifact's current version, so the heading, version trigger, and path always describe the same artifact. At either end of the catalog the matching control is disabled and its key does nothing.
+
+Visual rules from the proposal apply to every page that shares the top bar: no pill badges, no accent side tabs, no boxed card rows, no tracked-caps labels, no decorative status dots, and no middle-dot-joined metadata strings. Focus is always visible, text meets WCAG AA contrast, and the blue accent is reserved for versions and dispatch states.
+
+Ledger entries added to `conformance.yml` on November 25, 2026:
+
+```yaml
+  - id: UXR-009
+    kind: behavior
+    behavior: Review gives the preview the full window, with the catalog, comments, and version information in drawers that start closed, open from always-visible triggers that expose aria-expanded and aria-controls, and never cover the whole preview.
+    owner: web-application
+    source: {file: review-refinements-spec.md, anchor: reader-layout}
+    acceptance:
+      behavior: {id: UXR-009-B, description: "On a 1440-pixel window every drawer trigger reports aria-expanded false and every drawer is hidden; opening the catalog narrows the preview, the comments and version drawers share the right side so opening one closes the other, and closing a drawer returns focus to its trigger."}
+      failure: {id: UXR-009-F, description: "Below 760 pixels an open drawer overlays the preview without resizing it, leaves at least 56 pixels of the preview visible, and never makes the page scroll sideways."}
+    deployments: [local]
+    status: implementing
+    depends_on: []
+
+  - id: UXR-010
+    kind: behavior
+    behavior: T, C, and V toggle the catalog, comments, and version drawers and move focus into them, left and right arrows step through artifacts, and Escape closes the most recently opened drawer, while chords with modifiers, keys typed in editable fields, and keys pressed inside the preview frame are left alone.
+    owner: web-application
+    source: {file: review-refinements-spec.md, anchor: reader-layout}
+    acceptance:
+      behavior: {id: UXR-010-B, description: "T, C, and V open their drawers and focus each drawer's title, V replaces an open comments drawer, and two Escapes close the version drawer and then the catalog, each returning focus to its trigger."}
+      failure: {id: UXR-010-F, description: "Shift-T, Alt-T, Alt-C, Control-Right, and Command-Right change nothing; T, C, V, the right arrow, and Escape pressed inside the focused preview frame change nothing; T, C, and V typed in catalog search stay in the field."}
+    deployments: [local]
+    status: implementing
+    depends_on: [UXR-009, UXR-006]
+
+  - id: UXR-011
+    kind: behavior
+    behavior: The bottom bar shows the selected artifact's path, its position in the catalog, and previous and next controls, and stepping by button or arrow key keeps the heading, version, and path of one artifact together.
+    owner: web-application
+    source: {file: review-refinements-spec.md, anchor: reader-layout}
+    acceptance:
+      behavior: {id: UXR-011-B, description: "Pressing the right arrow from the first of two artifacts shows the second artifact's name, current version, path, and position 2 / 2; Previous and the left arrow return to the first artifact's name, version, and path."}
+      failure: {id: UXR-011-F, description: "At the first artifact Previous is disabled and the left arrow and K change nothing; at the last artifact Next is disabled and the right arrow and J leave the name, version, path, position, and address unchanged."}
+    deployments: [local]
+    status: implementing
+    depends_on: [UXR-009]
 ```

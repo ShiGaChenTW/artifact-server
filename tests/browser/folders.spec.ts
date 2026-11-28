@@ -9,7 +9,9 @@ import {
   startTestServer,
 } from "../support/runtime-harness.js";
 import {startStubOidcProvider} from "../support/stub-oidc-provider.js";
-import {englishContext, localLogin, startBrowserFixture, stopBrowserFixture} from "./browser-fixture.js";
+import {
+  englishContext, localLogin, openDrawer, openVersionTab, startBrowserFixture, stopBrowserFixture,
+} from "./browser-fixture.js";
 
 test("Review drills into folders, moves an artifact, and renames both records", async ({browser}) => {
   const fixture = await startBrowserFixture(browser);
@@ -25,6 +27,8 @@ test("Review drills into folders, moves an artifact, and renames both records", 
     const catalog = page.getByRole("complementary", {name: "Artifact catalog"});
     const inspector = page.locator(".as-inspector");
     await expect(page.getByRole("heading", {name: "Draft report", exact: true})).toBeVisible();
+    await openDrawer(page, "catalog");
+    await openVersionTab(page, "Details");
     await catalog.getByRole("button", {name: "New folder"}).click();
     let dialog = page.getByRole("dialog", {name: "New folder"});
     await dialog.getByRole("textbox", {name: "Name"}).fill("Reports");
@@ -57,6 +61,8 @@ test("Review drills into folders, moves an artifact, and renames both records", 
     await expect(catalog.getByRole("button", {name: /Final report/u})).toBeVisible();
     await page.reload();
     await expect(page).toHaveURL(/folder=fld_/u);
+    await openDrawer(page, "catalog");
+    await openVersionTab(page, "Details");
     await expect(catalog.getByRole("button", {name: /Final report/u})).toBeVisible();
     await expect(inspector.getByRole("navigation", {name: "Location"})).toContainText("Final");
     await expect(page.frameLocator(".as-artifact-frame").frameLocator("iframe").getByText("Saved artifact"))
@@ -66,6 +72,7 @@ test("Review drills into folders, moves an artifact, and renames both records", 
     try {
       const zh = await zhContext.newPage();
       await zh.goto(fixture.server.baseUrl);
+      await openDrawer(zh, "catalog");
       await expect(zh.getByRole("button", {name: "新增資料夾"})).toBeVisible();
       await expect(zh.getByRole("navigation", {name: "位置"}).getByText("專案根目錄")).toBeVisible();
     } finally {
@@ -96,6 +103,7 @@ test("Review moves an artifact to another project and follows its old Review lin
     const {page} = fixture;
     const inspector = page.locator(".as-inspector");
     await expect(page.getByRole("heading", {name: "Travel report", exact: true})).toBeVisible();
+    await openVersionTab(page, "Details");
     await inspector.getByRole("button", {name: "Move…", exact: true}).click();
     const dialog = page.getByRole("dialog", {name: "Move Travel report"});
     await dialog.getByRole("combobox", {name: "Project"}).selectOption({label: "Archive"});
@@ -147,11 +155,13 @@ test("Review hides placement actions when the live deployment reports folders un
       const page = await context.newPage();
       await page.goto(`${applicationOrigin}/auth/login?returnTo=%2Freview`);
       await expect(page.getByRole("heading", {name: "Remote fixture", exact: true})).toBeVisible();
+      await openDrawer(page, "catalog");
+      await openVersionTab(page, "Details");
       await expect(page.getByRole("button", {name: "New folder", exact: true})).toHaveCount(0);
       await expect(page.getByRole("navigation", {name: "Location"})).toHaveCount(0);
       await expect(page.getByRole("button", {name: "Move…", exact: true})).toHaveCount(0);
       await expect(page.locator(".as-inspector").getByRole("button", {name: "Rename", exact: true})).toHaveCount(0);
-      await expect(page.getByRole("link", {name: "Open trash"})).toHaveCount(0);
+      await expect(page.getByRole("link", {name: "Trash"})).toHaveCount(0);
       await expect(page.getByRole("button", {name: "Move to Trash", exact: true})).toHaveCount(0);
     } finally {
       await server.stop();

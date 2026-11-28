@@ -34,6 +34,15 @@ async function expectAccessible(page: Page): Promise<void> {
   expect(results.violations).toEqual([]);
 }
 
+/** Reach Linked folders from Review: the Files area, then its section tab. */
+async function openLinkedFolders(page: Page): Promise<void> {
+  await page.getByRole("navigation", {name: "Primary"}).getByRole("link", {name: "Files"}).click();
+  await page.waitForURL(/\/review\/(?:files|linked-folders)/u);
+  if (!page.url().includes("/review/linked-folders")) {
+    await page.getByRole("navigation", {name: "File sections"}).getByRole("link", {name: "Linked folders"}).click();
+  }
+}
+
 test.describe("Linked folders", () => {
   test("a member links a folder, previews a new file, captures pending files, and relinks a moved file", async ({browser}) => {
     const fixture = await startFixture(browser, "on");
@@ -44,7 +53,7 @@ test.describe("Linked folders", () => {
       await writeFile(path.join(output, "docs", "guide.md"), "# Guide\n");
       await localLogin(fixture);
 
-      await fixture.page.getByRole("link", {name: "Linked folders"}).click();
+      await openLinkedFolders(fixture.page);
       await expect(fixture.page).toHaveURL(/\/review\/linked-folders\?project=prj_default/u);
       await expect(fixture.page.getByRole("heading", {name: "No linked folders yet"})).toBeVisible();
       await expectAccessible(fixture.page);
@@ -57,7 +66,7 @@ test.describe("Linked folders", () => {
       const card = fixture.page.getByRole("region", {name: "site-output"});
       await expect(card.getByText("2 pending")).toBeVisible();
       await expect(card.getByText(output, {exact: true})).toBeVisible();
-      const inventory = fixture.page.getByRole("region", {name: /Files · site-output/u});
+      const inventory = fixture.page.getByRole("region", {name: /Files in site-output/u});
       await expect(inventory.getByRole("cell", {exact: true, name: "docs/guide.md"})).toBeVisible();
       await expectAccessible(fixture.page);
 
@@ -84,7 +93,7 @@ test.describe("Linked folders", () => {
       await inventory.getByRole("button", {name: "Relink"}).click();
       await expect(inventory.getByText("Looks like docs/guide.md moved to archive/guide.md.")).toBeHidden();
       await inventory.getByRole("button", {exact: true, name: "All"}).click();
-      await expect(inventory.getByRole("row").filter({hasText: "archive/guide.md"})).toContainText("Captured · In sync");
+      await expect(inventory.getByRole("row").filter({hasText: "archive/guide.md"})).toContainText(/Captured\s*In sync/u);
 
       await card.getByRole("button", {name: "Pause"}).click();
       await expect(card.getByText("Paused")).toBeVisible();
@@ -115,11 +124,11 @@ test.describe("Linked folders", () => {
       await writeFile(path.join(output, "beta.md"), "# Beta\n");
       await writeFile(path.join(output, "gamma.md"), "# Gamma\n");
       await localLogin(fixture);
-      await fixture.page.getByRole("link", {name: "Linked folders"}).click();
+      await openLinkedFolders(fixture.page);
       await fixture.page.getByRole("button", {name: "Link a folder"}).click();
       await fixture.page.getByLabel("Directory path").fill(output);
       await fixture.page.getByRole("button", {name: "Link", exact: true}).click();
-      const inventory = fixture.page.getByRole("region", {name: /Files · notes-output/u});
+      const inventory = fixture.page.getByRole("region", {name: /Files in notes-output/u});
       await inventory.getByRole("checkbox", {name: "Select alpha.md"}).click();
       await inventory.getByRole("button", {name: "Capture 1 selected"}).click();
       await expect(inventory.getByRole("listitem").filter({hasText: "alpha.md"})).toContainText("Captured");
@@ -157,8 +166,12 @@ test.describe("Linked folders", () => {
       const context = await browser.newContext();
       const page = await context.newPage();
       await page.goto(enabled.server.baseUrl);
-      await expect(page.getByRole("link", {name: "連結的資料夾"})).toBeVisible();
-      await page.getByRole("link", {name: "連結的資料夾"}).click();
+      await page.getByRole("navigation", {name: "主要"}).getByRole("link", {name: "檔案"}).click();
+      await page.waitForURL(/\/review\/(?:files|linked-folders)/u);
+      if (!page.url().includes("/review/linked-folders")) {
+        await expect(page.getByRole("link", {name: "連結的資料夾"})).toBeVisible();
+        await page.getByRole("link", {name: "連結的資料夾"}).click();
+      }
       await expect(page.getByRole("heading", {name: "還沒有連結的資料夾"})).toBeVisible();
       await expect(page.getByRole("button", {name: "連結資料夾"})).toBeVisible();
       await context.close();

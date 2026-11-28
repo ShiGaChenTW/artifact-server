@@ -12,7 +12,13 @@ import {
   removeTestInstallation,
   startTestServer,
 } from "../support/runtime-harness.js";
-import {browserStorage, localLogin, type BrowserFixture, englishContext} from "./browser-fixture.js";
+import {
+  type BrowserFixture,
+  browserStorage,
+  englishContext,
+  localLogin,
+  openDrawer,
+} from "./browser-fixture.js";
 import {createThreadOverApi} from "./comment-api.js";
 
 const fixtureHtml =
@@ -102,7 +108,7 @@ test.describe("PRS-006 presence avatar", () => {
       await page.goto(
         `${fixture.server.baseUrl}/review?project=prj_default&artifact=${artifactId}&version=${published.version.id}`,
       );
-      await page.getByRole("tab", {name: "Comments"}).click();
+      await openDrawer(page, "comments");
       const cards = page.getByRole("article");
       await expect(cards).toHaveCount(2);
 

@@ -10,6 +10,7 @@ import {dashboardText} from "@/i18n/messages/dashboard";
 const windowText = dashboardText.window;
 const stateText = dashboardText.dispatchState;
 const phrase = dashboardText.activity.phrase;
+const group = dashboardText.activity.group;
 
 /** One choice in the window control. */
 export interface DashboardWindowOption {
@@ -69,6 +70,33 @@ const activityLabels = {
   "dispatch.failed": phrase.dispatchFailed,
   "dispatch.sent": phrase.dispatchSent,
 } as const satisfies Record<InsightActivityKind, ActivityPhrase>;
+
+const activityGroupLabels = {
+  "artifact.access_changed": group.accessChanged,
+  "artifact.captured": group.captured,
+  "artifact.deleted": group.deleted,
+  "artifact.linked": group.linked,
+  "artifact.published": group.published,
+  "artifact.relinked": group.relinked,
+  "artifact.restored": group.restored,
+  "artifact.tags_changed": group.tagsChanged,
+  "comment.deleted": group.commentDeleted,
+  "comment.edited": group.commentEdited,
+  "comment.opened": group.commentOpened,
+  "comment.reopened": group.commentReopened,
+  "comment.replied": group.commentReplied,
+  "comment.resolved": group.commentResolved,
+  "dispatch.addressed": group.dispatchAddressed,
+  "dispatch.canceled": group.dispatchCanceled,
+  "dispatch.delivered": group.dispatchDelivered,
+  "dispatch.failed": group.dispatchFailed,
+  "dispatch.sent": group.dispatchSent,
+} as const satisfies Record<InsightActivityKind, (actor: string, count: number) => string>;
+
+/** One sentence for a run of the same change by one actor. */
+export function activityGroupLabel(kind: InsightActivityKind, actor: string, count: number): string {
+  return activityGroupLabels[kind](actor, count);
+}
 
 /** The phrase that describes one activity kind, split around its artifact. */
 export function activityLabel(kind: InsightActivityKind): ActivityPhrase {

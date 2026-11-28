@@ -1,9 +1,10 @@
 ---
 id: ARTSV-6.2
 title: 改版 commit 並開疊加 PR
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-25T13:19:00Z'
+updated_date: '2026-11-27T08:49:59Z'
 labels: []
 dependencies:
   - ARTSV-6.1
@@ -20,6 +21,12 @@ ordinal: 26000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 PR 已開，描述列出變更摘要與偏離（次要色 #566B7E、輸入框邊框、分享鈕位置、上一個/下一個不循環、儀表板分組列表）
-- [ ] #2 6.1 合併後 PR base 改為 main，沒有衝突
+- [x] #1 PR 已開，描述列出變更摘要與偏離（次要色 #566B7E、輸入框邊框、分享鈕位置、上一個/下一個不循環、儀表板分組列表）
+- [x] #2 6.1 合併後 PR base 改為 main，沒有衝突
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-27：PR #3 描述補上白板模式、七項偏離中與程式相關的六項、合併前待辦與 UAT F1–F3。
+<!-- SECTION:NOTES:END -->

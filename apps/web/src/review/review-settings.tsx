@@ -1,12 +1,8 @@
-import {ArrowLeft01Icon, Moon02Icon, Sun03Icon} from "@hugeicons/core-free-icons";
-import {HugeiconsIcon} from "@hugeicons/react";
-
 import {api, type Project, type Session} from "@/api/client";
 import {StatePanel} from "@/components/product";
-import {Button, ButtonLink} from "@/components/ui/button";
-import {LanguageSwitch} from "@/i18n/language-switch";
+import {ButtonLink} from "@/components/ui/button";
 import {settingsText} from "@/i18n/messages/settings";
-import {ArtifactMark} from "./artifact-mark.tsx";
+import {AppTopBar} from "./app-shell.tsx";
 import {parseSettingsRoute, type SettingsRoute} from "./review-routes.ts";
 import {ApiKeysScreen} from "./settings-api-keys.tsx";
 import {McpScreen} from "./settings-mcp.tsx";
@@ -43,39 +39,25 @@ export function ReviewSettings({
 
   return (
     <div className="as-settings">
-      <header className="as-settings__header">
-        <div className="as-settings__header-inner">
-          <a aria-label="Artifact Server" className="as-settings__brand" href={reviewHref}>
-            <span className="as-settings__brand-mark">
-              <ArtifactMark className="as-settings__mark" />
-            </span>
-            <span className="as-settings__brand-label">{settingsText.shell.brandLabel}</span>
-          </a>
-          <div className="as-settings__header-actions">
-            <LanguageSwitch />
+      <div className="as-settings__topbar">
+        <AppTopBar
+          area="settings"
+          capabilities={session.capabilities}
+          onThemeChange={onThemeChange}
+          projectId={reviewProjectId(reviewHref)}
+          reviewHref={reviewHref}
+          theme={theme}
+          trailing={(
             <button
-              aria-label={theme === "moon" ? settingsText.shell.useLightTheme : settingsText.shell.useDarkTheme}
-              className="as-icon-button"
-              onClick={onThemeChange}
-              title={theme === "moon" ? settingsText.shell.useLightTheme : settingsText.shell.useDarkTheme}
+              className="as-bar-button"
+              onClick={() => void api.logout().finally(() => window.location.assign("/review"))}
               type="button"
             >
-              <HugeiconsIcon icon={theme === "moon" ? Sun03Icon : Moon02Icon} strokeWidth={1.8} />
-            </button>
-            <ButtonLink href={reviewHref} size="sm" variant="outline">
-              <HugeiconsIcon data-icon="inline-start" icon={ArrowLeft01Icon} strokeWidth={1.8} />
-              {settingsText.shell.backToReview}
-            </ButtonLink>
-            <Button
-              onClick={() => void api.logout().finally(() => window.location.assign("/review"))}
-              size="sm"
-              variant="ghost"
-            >
               {settingsText.shell.signOut}
-            </Button>
-          </div>
-        </div>
-      </header>
+            </button>
+          )}
+        />
+      </div>
       <div className="as-settings__layout">
         <nav aria-label={settingsText.shell.navLabel} className="as-settings__nav">
           <p>{settingsText.shell.navHeading}</p>
@@ -209,6 +191,11 @@ function AdministratorPermissionRequired() {
       title={settingsText.shell.administratorPermissionTitle}
     />
   );
+}
+
+/** The project of the Review this visit came from, so Dashboard and Files keep it. */
+function reviewProjectId(reviewHref: string): string | null {
+  return new URL(reviewHref, window.location.origin).searchParams.get("project");
 }
 
 function readReturnToReview(): string {

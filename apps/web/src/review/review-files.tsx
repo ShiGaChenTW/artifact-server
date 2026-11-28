@@ -1,5 +1,5 @@
 import {
-  ArrowDown01Icon, ArrowLeft01Icon, ArrowRight01Icon, Delete02Icon, Moon02Icon, Sun03Icon,
+  ArrowDown01Icon, ArrowRight01Icon, Folder01Icon, Search01Icon,
 } from "@hugeicons/core-free-icons";
 import {HugeiconsIcon} from "@hugeicons/react";
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
@@ -9,24 +9,23 @@ import {
   api, type BatchItem, type BatchOperation, type FileFacets, type FileItem, fileKinds, type Folder,
   type Project, type Session,
 } from "@/api/client";
-import {ErrorPanel, PageHeader, StatePanel} from "@/components/product";
-import {Button, ButtonLink} from "@/components/ui/button";
+import {ErrorPanel, StatePanel} from "@/components/product";
+import {Button} from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {Input} from "@/components/ui/input";
 import {NativeSelect, NativeSelectOption} from "@/components/ui/native-select";
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from "@/components/ui/table";
-import {LanguageSwitch} from "@/i18n/language-switch";
 import {locale} from "@/i18n/locale";
 import {serverErrorMessage} from "@/i18n/messages/common";
 import {filesText} from "@/i18n/messages/files";
 import {folderText} from "@/i18n/messages/folders";
 import {reviewAppText} from "@/i18n/messages/review-app";
 import {errorMessage, formatBytes, formatTimestamp, sourceFreshnessLabel} from "@/lib/presentation";
-import {ArtifactMark} from "./artifact-mark.tsx";
+import {AppTopBar, FilesSectionHeader} from "./app-shell.tsx";
 import {FolderDestinationPicker, visibleArtifactName} from "./review-folders.tsx";
-import {filesPath, linkedFoldersPath, trashPath} from "./review-routes.ts";
+import {filesPath, linkedFoldersPath} from "./review-routes.ts";
 
 const sorts = ["updated", "created", "name", "size", "comments"] as const;
 type Sort = (typeof sorts)[number];
@@ -160,6 +159,22 @@ export function FilesPage({
   const [notice, setNotice] = useState<{readonly text: string; readonly undo?: readonly FileItem[]} | null>(null);
   const [linkedPending, setLinkedPending] = useState<LinkedPending | null>(null);
   const canBatch = session.capabilities.batch;
+  // The folder tree is a permanent column on a wide screen and a toggled
+  // drawer on a narrow one.
+  const wide = useWideViewport();
+  const [treeOpen, setTreeOpen] = useState(false);
+  const treeToggleRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (wide || !treeOpen) return undefined;
+    const close = (event: globalThis.KeyboardEvent): void => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      event.preventDefault();
+      setTreeOpen(false);
+      treeToggleRef.current?.focus();
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [treeOpen, wide]);
   const projectNames = useMemo(() => new Map(projects.map(({id, name}) => [id, name])), [projects]);
 
   useEffect(() => {
@@ -274,69 +289,49 @@ export function FilesPage({
   const selectedProject = projects.find(({id}) => id === filters.project) ?? null;
 
   return (
-    <div className="as-settings">
-      <header className="as-settings__header">
-        <div className="as-settings__header-inner">
-          <a aria-label="Artifact Server" className="as-settings__brand" href="/review">
-            <span className="as-settings__brand-mark">
-              <ArtifactMark className="as-settings__mark" />
-            </span>
-            <span className="as-settings__brand-label">{filesText.title}</span>
-          </a>
-          <div className="as-settings__header-actions">
-            <LanguageSwitch />
-            <button
-              aria-label={theme === "moon" ? reviewAppText.catalog.useLightTheme : reviewAppText.catalog.useDarkTheme}
-              className="as-icon-button"
-              onClick={onThemeChange}
-              title={theme === "moon" ? reviewAppText.catalog.useLightTheme : reviewAppText.catalog.useDarkTheme}
-              type="button"
-            >
-              <HugeiconsIcon icon={theme === "moon" ? Sun03Icon : Moon02Icon} strokeWidth={1.8} />
-            </button>
-            {session.capabilities.trash ? (
-              <ButtonLink href={trashPath} size="sm" variant="ghost">
-                <HugeiconsIcon data-icon="inline-start" icon={Delete02Icon} strokeWidth={1.8} />
-                {filesText.openTrash}
-              </ButtonLink>
-            ) : null}
-            <ButtonLink href="/review" size="sm" variant="outline">
-              <HugeiconsIcon data-icon="inline-start" icon={ArrowLeft01Icon} strokeWidth={1.8} />
-              {filesText.back}
-            </ButtonLink>
-          </div>
-        </div>
-      </header>
-      <main className="mx-auto grid w-full max-w-[90rem] min-w-0 grid-cols-1 gap-6 px-4 pt-6 pb-24 sm:px-6" id="main-content">
-        <PageHeader description={filesText.description} title={filesText.title} />
-        {linkedPending === null ? null : (
-          <aside aria-label={filesText.linkedPendingLabel} className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-muted/40 px-4 py-3 text-sm">
-            <span>{filesText.linkedPending(linkedPending.entries, linkedPending.folders)}</span>
-            <ButtonLink
-              href={linkedPending.projectId === null
-                ? linkedFoldersPath
-                : `${linkedFoldersPath}?${new URLSearchParams({project: linkedPending.projectId})}`}
-              size="sm"
-              variant="outline"
-            >
-              {filesText.reviewPending}
-            </ButtonLink>
-          </aside>
-        )}
-        <section aria-label={filesText.filters} className="flex min-w-0 flex-wrap items-end gap-3">
-          <label className="grid min-w-0 gap-1 text-xs text-muted-foreground">
-            {filesText.search}
-            <Input className="w-56 max-w-full" onChange={(event) => setSearchDraft(event.currentTarget.value)} type="search" value={searchDraft} />
+    <div className="as-page">
+      <AppTopBar
+        area="files"
+        capabilities={session.capabilities}
+        onThemeChange={onThemeChange}
+        projectId={filters.project === "" ? null : filters.project}
+        theme={theme}
+      />
+      <div className="as-page__scroll">
+      <main className="as-page__wrap as-files" id="main-content">
+        <FilesSectionHeader
+          capabilities={session.capabilities}
+          counts={{files: total, linkedPending: linkedPending?.entries ?? 0}}
+          current="files"
+          projectId={filters.project === "" ? null : filters.project}
+          title={filesText.title}
+        />
+        <section aria-label={filesText.filters} className="as-files-toolbar">
+          <button
+            aria-controls="files-folder-tree"
+            aria-expanded={treeOpen}
+            className="as-bar-button as-bar-button--line as-files-tree-toggle"
+            onClick={() => setTreeOpen((open) => !open)}
+            ref={treeToggleRef}
+            type="button"
+          >
+            <HugeiconsIcon aria-hidden="true" icon={Folder01Icon} strokeWidth={1.6} />
+            {filesText.folderPicker}
+          </button>
+          <label className="as-files-search">
+            <span className="as-visually-hidden">{filesText.search}</span>
+            <HugeiconsIcon aria-hidden="true" icon={Search01Icon} strokeWidth={1.6} />
+            <Input onChange={(event) => setSearchDraft(event.currentTarget.value)} placeholder={filesText.search} type="search" value={searchDraft} />
           </label>
-          <label className="grid gap-1 text-xs text-muted-foreground">
-            {filesText.project}
+          <label>
+            <span className="as-visually-hidden">{filesText.project}</span>
             <NativeSelect onChange={(event) => change({project: event.currentTarget.value, folder: ""})} value={filters.project}>
               <NativeSelectOption value="">{filesText.allProjects}</NativeSelectOption>
               {projects.map(({id, name}) => <NativeSelectOption key={id} value={id}>{name}</NativeSelectOption>)}
             </NativeSelect>
           </label>
-          <label className="grid gap-1 text-xs text-muted-foreground">
-            {filesText.kind}
+          <label>
+            <span className="as-visually-hidden">{filesText.kind}</span>
             <NativeSelect onChange={(event) => change({kind: event.currentTarget.value})} value={filters.kind}>
               <NativeSelectOption value="">{filesText.allKinds}</NativeSelectOption>
               {fileKinds.map((kind) => (
@@ -346,29 +341,29 @@ export function FilesPage({
               ))}
             </NativeSelect>
           </label>
-          <label className="grid gap-1 text-xs text-muted-foreground">
-            {filesText.tag}
-            <Input className="w-36" list="files-tag-facets" maxLength={40} onChange={(event) => change({tag: event.currentTarget.value})} value={filters.tag} />
-            <datalist id="files-tag-facets">
-              {facets?.tags.map(({tag}) => <option key={tag} value={tag} />)}
-            </datalist>
-          </label>
-          <label className="grid gap-1 text-xs text-muted-foreground">
-            {filesText.linked}
+          <label>
+            <span className="as-visually-hidden">{filesText.linked}</span>
             <NativeSelect onChange={(event) => change({linked: linkedStates.find((value) => value === event.currentTarget.value) ?? "any"})} value={filters.linked}>
               {linkedStates.map((state) => <NativeSelectOption key={state} value={state}>{filesText.linkedStates[state]}</NativeSelectOption>)}
             </NativeSelect>
           </label>
-          <label className="grid gap-1 text-xs text-muted-foreground">
-            {filesText.updatedAfter}
-            <Input className="w-40" onChange={(event) => change({updatedAfter: event.currentTarget.value})} type="date" value={filters.updatedAfter} />
+          <label className="as-files-field">
+            <span>{filesText.tag}</span>
+            <Input className="w-32" list="files-tag-facets" maxLength={40} onChange={(event) => change({tag: event.currentTarget.value})} value={filters.tag} />
+            <datalist id="files-tag-facets">
+              {facets?.tags.map(({tag}) => <option key={tag} value={tag} />)}
+            </datalist>
           </label>
-          <label className="grid gap-1 text-xs text-muted-foreground">
-            {filesText.updatedBefore}
-            <Input className="w-40" onChange={(event) => change({updatedBefore: event.currentTarget.value})} type="date" value={filters.updatedBefore} />
+          <label className="as-files-field">
+            <span>{filesText.updatedAfter}</span>
+            <Input className="w-36" onChange={(event) => change({updatedAfter: event.currentTarget.value})} type="date" value={filters.updatedAfter} />
           </label>
-          <label className="grid gap-1 text-xs text-muted-foreground">
-            {filesText.sort}
+          <label className="as-files-field">
+            <span>{filesText.updatedBefore}</span>
+            <Input className="w-36" onChange={(event) => change({updatedBefore: event.currentTarget.value})} type="date" value={filters.updatedBefore} />
+          </label>
+          <label>
+            <span className="as-visually-hidden">{filesText.sort}</span>
             <NativeSelect
               onChange={(event) => {
                 const sort = sorts.find((value) => value === event.currentTarget.value) ?? "updated";
@@ -379,48 +374,62 @@ export function FilesPage({
               {sorts.map((sort) => <NativeSelectOption key={sort} value={sort}>{filesText.sorts[sort]}</NativeSelectOption>)}
             </NativeSelect>
           </label>
-          <Button
+          <button
             aria-pressed={filters.direction === "asc"}
+            className="as-bar-button as-bar-button--line"
             onClick={() => change({direction: filters.direction === "asc" ? "desc" : "asc"})}
-            size="sm"
             type="button"
-            variant="outline"
           >
             {filters.direction === "asc" ? filesText.ascending : filesText.descending}
-          </Button>
+          </button>
           {filtered ? (
-            <Button onClick={() => { setSearchDraft(""); setFilters({...emptyFilters, sort: filters.sort, direction: filters.direction}); }} size="sm" type="button" variant="ghost">
+            <button className="as-bar-button" onClick={() => { setSearchDraft(""); setFilters({...emptyFilters, sort: filters.sort, direction: filters.direction}); }} type="button">
               {filesText.clear}
-            </Button>
+            </button>
           ) : null}
+          {linkedPending === null ? null : (
+            <aside aria-label={filesText.linkedPendingLabel} className="as-files-notice">
+              <span>{filesText.linkedPending(linkedPending.entries, linkedPending.folders)}</span>
+              {" "}
+              <a
+                href={linkedPending.projectId === null
+                  ? linkedFoldersPath
+                  : `${linkedFoldersPath}?${new URLSearchParams({project: linkedPending.projectId})}`}
+              >
+                {filesText.reviewPending}
+              </a>
+            </aside>
+          )}
         </section>
-        <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-[15rem_minmax(0,1fr)]">
+        <div className="as-files-body">
           <FolderColumn
-            onSelectFolder={(folder) => change({folder})}
+            hidden={!wide && !treeOpen}
+            onSelectFolder={(folder) => {
+              change({folder});
+              if (!wide) setTreeOpen(false);
+            }}
             onSelectProject={(project) => change({project, folder: ""})}
             projects={projects}
             selectedFolder={filters.folder}
             selectedProject={selectedProject}
           />
-          <section className="grid min-w-0 content-start gap-4">
-            <p aria-live="polite" className="min-h-5 text-sm text-muted-foreground" role="status">
+          <section className="as-files-list">
+            <p aria-live="polite" className="as-files-status" role="status">
               {notice?.text}
               {notice?.undo !== undefined && notice.undo.length > 0 ? (
-                <Button
-                  className="ml-3"
+                <button
+                  className="as-bar-button as-bar-button--line"
                   disabled={pending}
                   onClick={() => { const undo = notice.undo ?? []; void run("recover", undo, {}); }}
-                  size="xs"
                   type="button"
-                  variant="outline"
                 >
                   {filesText.undo}
-                </Button>
+                </button>
               ) : null}
             </p>
             {canBatch && selectedItems.length > 0 ? (
-              <div aria-label={filesText.selection} className="flex flex-wrap items-center gap-2 rounded-[var(--radius-card)] border border-[var(--color-rule-2)] bg-popover p-2 text-sm" role="toolbar">
-                <span className="px-1 font-medium">{filesText.selected(selectedItems.length)}</span>
+              <div aria-label={filesText.selection} className="as-files-selection" role="toolbar">
+                <span className="as-files-selection__count">{filesText.selected(selectedItems.length)}</span>
                 {selectedItems.length > maximumBatch ? (
                   <span className="text-xs text-muted-foreground">{filesText.batches(Math.ceil(selectedItems.length / maximumBatch))}</span>
                 ) : null}
@@ -461,6 +470,7 @@ export function FilesPage({
           </section>
         </div>
       </main>
+      </div>
       {dialog?.kind === "move" ? (
         <MoveDialog
           count={selectedItems.length}
@@ -553,8 +563,7 @@ function FileTable({
   const [loadingMore, setLoadingMore] = useState(false);
   const allSelected = items.length > 0 && items.every(({id}) => selected.has(id));
   return (
-    <section className="grid min-w-0 gap-3" onKeyDown={onKeyDown}>
-      <p className="font-mono text-xs text-muted-foreground tabular-nums">{filesText.count(items.length, total)}</p>
+    <section className="as-files-table" onKeyDown={onKeyDown}>
       <Table>
         <TableHeader>
           <TableRow>
@@ -563,20 +572,21 @@ function FileTable({
                 <input
                   aria-label={filesText.selectAll}
                   checked={allSelected}
-                  className="size-4 accent-[var(--color-accent)]"
+                  className="as-files-check"
                   onChange={(event) => onSelectAll(event.currentTarget.checked)}
                   type="checkbox"
                 />
               </TableHead>
             ) : null}
             <TableHead>{filesText.columns.name}</TableHead>
-            <TableHead>{filesText.columns.kind}</TableHead>
-            <TableHead>{filesText.columns.location}</TableHead>
-            <TableHead className="text-right">{filesText.columns.size}</TableHead>
-            <TableHead>{filesText.columns.updated}</TableHead>
-            <TableHead>{filesText.columns.tags}</TableHead>
-            <TableHead className="text-right">{filesText.columns.comments}</TableHead>
-            <TableHead>{filesText.columns.linked}</TableHead>
+            <TableHead className="as-files-col-project">{filesText.project}</TableHead>
+            <TableHead>{reviewAppText.inspector.versionsTab}</TableHead>
+            <TableHead className="as-files-col-optional">{filesText.columns.kind}</TableHead>
+            <TableHead className="as-files-col-optional">{filesText.columns.tags}</TableHead>
+            <TableHead className="as-files-col-optional text-right">{filesText.columns.comments}</TableHead>
+            <TableHead className="as-files-col-source">{filesText.columns.linked}</TableHead>
+            <TableHead className="as-files-col-optional text-right">{filesText.columns.size}</TableHead>
+            <TableHead className="text-right">{filesText.columns.updated}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -587,46 +597,51 @@ function FileTable({
                   <input
                     aria-label={filesText.selectRow(item.name)}
                     checked={selected.has(item.id)}
-                    className="size-4 accent-[var(--color-accent)]"
+                    className="as-files-check"
                     onChange={() => undefined}
                     onClick={(event) => onToggle(index, event)}
                     type="checkbox"
                   />
                 </TableCell>
               ) : null}
-              <TableCell className="max-w-[18rem] font-medium">
-                <a className="block truncate hover:underline" href={reviewHref(item)} title={filesText.openInReview}>
+              <TableCell className="as-files-name">
+                <a href={reviewHref(item)} title={filesText.openInReview}>
                   {visibleArtifactName(item.name)}
                 </a>
+                {item.folderPath.length === 0 ? null : (
+                  <span className="as-files-name__folder">{item.folderPath.map(({name}) => name).join("/")}</span>
+                )}
               </TableCell>
-              <TableCell>{folderText.kinds[item.fileKind]}</TableCell>
-              <TableCell className="max-w-[16rem] truncate">
-                {[projectNames.get(item.projectId) ?? item.projectName, ...item.folderPath.map(({name}) => name)].join(" › ")}
+              <TableCell className="as-files-col-project">{projectNames.get(item.projectId) ?? item.projectName}</TableCell>
+              <TableCell><span className="as-files-version">v{item.currentVersionNumber}</span></TableCell>
+              <TableCell className="as-files-col-optional">{folderText.kinds[item.fileKind]}</TableCell>
+              <TableCell className="as-files-col-optional max-w-[12rem] truncate">{item.tags.join(", ")}</TableCell>
+              <TableCell className="as-files-col-optional as-files-num">{item.commentCount}</TableCell>
+              <TableCell className="as-files-source as-files-col-source" data-source={item.linked ?? "not-linked"}>
+                {item.linked === null ? filesText.linkedStates["not-linked"] : sourceFreshnessLabel(item.linked)}
               </TableCell>
-              <TableCell className="text-right font-mono text-xs tabular-nums">{formatBytes(item.size)}</TableCell>
-              <TableCell className="font-mono text-xs tabular-nums">{formatTimestamp(item.updatedAt)}</TableCell>
-              <TableCell className="max-w-[12rem] truncate text-xs">{item.tags.join(", ")}</TableCell>
-              <TableCell className="text-right font-mono text-xs tabular-nums">{item.commentCount}</TableCell>
-              <TableCell className="text-xs">{item.linked === null ? "" : sourceFreshnessLabel(item.linked)}</TableCell>
+              <TableCell className="as-files-col-optional as-files-num">{formatBytes(item.size)}</TableCell>
+              <TableCell className="as-files-num">{formatTimestamp(item.updatedAt)}</TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
-      {nextCursor === null ? null : (
-        <div>
-          <Button
+      <div className="as-files-foot">
+        <span>{filesText.count(items.length, total)}</span>
+        {nextCursor === null ? null : (
+          <button
+            className="as-bar-button as-bar-button--line"
             disabled={loadingMore}
             onClick={() => {
               setLoadingMore(true);
               void onLoadMore(nextCursor).finally(() => setLoadingMore(false));
             }}
             type="button"
-            variant="outline"
           >
             {filesText.loadMore}
-          </Button>
-        </div>
-      )}
+          </button>
+        )}
+      </div>
     </section>
   );
 }
@@ -637,51 +652,49 @@ function FileTable({
  * folds into a Folder disclosure on narrow viewports.
  */
 function FolderColumn({
-  onSelectFolder, onSelectProject, projects, selectedFolder, selectedProject,
+  hidden, onSelectFolder, onSelectProject, projects, selectedFolder, selectedProject,
 }: {
+  readonly hidden: boolean;
   readonly onSelectFolder: (folderId: string) => void;
   readonly onSelectProject: (projectId: string) => void;
   readonly projects: readonly Project[];
   readonly selectedFolder: string;
   readonly selectedProject: Project | null;
 }) {
-  const wide = useWideViewport();
   return (
-    <details className="min-w-0 self-start rounded-[var(--radius-card)] border border-[var(--color-rule)] p-3 text-sm" open={wide}>
-      <summary className="cursor-pointer text-xs font-medium text-muted-foreground lg:pointer-events-none lg:list-none">
-        {filesText.folderPicker}
-      </summary>
-      <nav aria-label={filesText.folders} className="mt-2 grid gap-1">
-        {selectedProject === null ? (
-          <>
-            <p className="text-xs text-muted-foreground">{filesText.chooseProject}</p>
-            <ul className="grid gap-0.5">
-              {projects.map(({id, name}) => (
-                <li key={id}>
-                  <button className="w-full truncate rounded-[var(--radius-pill)] px-2 py-1 text-left hover:bg-[var(--color-hover)]" onClick={() => onSelectProject(id)} type="button">
-                    {name}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </>
-        ) : (
-          <ul className="grid gap-0.5">
-            <li>
-              <button
-                aria-current={selectedFolder === "" ? "location" : undefined}
-                className="w-full truncate rounded-[var(--radius-pill)] px-2 py-1 text-left font-medium hover:bg-[var(--color-hover)] aria-[current=location]:bg-[var(--color-hover)]"
-                onClick={() => onSelectFolder("")}
-                type="button"
-              >
-                {selectedProject.name} · {filesText.allFolders}
-              </button>
-              <FolderBranch onSelect={onSelectFolder} parentId={null} projectId={selectedProject.id} selected={selectedFolder} />
-            </li>
+    <nav aria-label={filesText.folders} className="as-files-tree" hidden={hidden} id="files-folder-tree">
+      <h2>{filesText.folders}</h2>
+      {selectedProject === null ? (
+        <>
+          <p className="as-files-tree__hint">{filesText.chooseProject}</p>
+          <ul>
+            {projects.map(({id, name}) => (
+              <li key={id}>
+                <button className="as-files-tree__node" onClick={() => onSelectProject(id)} type="button">
+                  <HugeiconsIcon aria-hidden="true" icon={Folder01Icon} strokeWidth={1.6} />
+                  <span>{name}</span>
+                </button>
+              </li>
+            ))}
           </ul>
-        )}
-      </nav>
-    </details>
+        </>
+      ) : (
+        <ul>
+          <li>
+            <button
+              aria-current={selectedFolder === "" ? "location" : undefined}
+              className="as-files-tree__node"
+              onClick={() => onSelectFolder("")}
+              type="button"
+            >
+              <HugeiconsIcon aria-hidden="true" icon={Folder01Icon} strokeWidth={1.6} />
+              <span>{filesText.wholeProject(selectedProject.name)}</span>
+            </button>
+            <FolderBranch onSelect={onSelectFolder} parentId={null} projectId={selectedProject.id} selected={selectedFolder} />
+          </li>
+        </ul>
+      )}
+    </nav>
   );
 }
 
@@ -709,16 +722,16 @@ function FolderBranch({
   }, [projectId, parentId]);
   if (folders === null || folders.length === 0) return null;
   return (
-    <ul className="grid gap-0.5 pl-3">
+    <ul className="as-files-tree__branch">
       {folders.map((folder) => {
         const expanded = open.has(folder.id);
         return (
           <li key={folder.id}>
-            <div className="flex min-w-0 items-center">
+            <div className="as-files-tree__row">
               <button
                 aria-expanded={expanded}
                 aria-label={expanded ? filesText.collapse(folder.name) : filesText.expand(folder.name)}
-                className="as-icon-button size-6 shrink-0"
+                className="as-icon-button as-files-tree__twisty"
                 onClick={() => setOpen((current) => {
                   const next = new Set(current);
                   if (expanded) next.delete(folder.id);
@@ -731,7 +744,7 @@ function FolderBranch({
               </button>
               <button
                 aria-current={selected === folder.id ? "location" : undefined}
-                className="min-w-0 flex-1 truncate rounded-[var(--radius-pill)] px-2 py-1 text-left hover:bg-[var(--color-hover)] aria-[current=location]:bg-[var(--color-hover)]"
+                className="as-files-tree__node"
                 onClick={() => onSelect(folder.id)}
                 type="button"
               >
@@ -747,7 +760,7 @@ function FolderBranch({
 }
 
 function useWideViewport(): boolean {
-  const query = "(min-width: 64rem)";
+  const query = "(min-width: 761px)";
   const [wide, setWide] = useState(() => window.matchMedia(query).matches);
   useEffect(() => {
     const media = window.matchMedia(query);

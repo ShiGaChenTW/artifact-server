@@ -39,3 +39,15 @@ iframe {
   background: #ffffff;
   color-scheme: light;
 }
+
+.as-reader-frame { height: 100%; }
+.as-reader-markers { position: fixed; inset: 0; pointer-events: none; z-index: 40; }
+.as-reader-marker {
+  position: absolute; right: 8px; width: 26px; height: 26px;
+  display: grid; place-items: center; border: 1px solid var(--foreground);
+  border-radius: 50%; background: var(--background); color: var(--foreground);
+  font: 600 12px/1 system-ui; cursor: pointer; pointer-events: auto;
+  box-shadow: none;
+}
+.as-reader-marker:hover, .as-reader-marker[aria-pressed="true"] { background: var(--foreground); color: var(--background); }
+.as-reader-marker:focus-visible { outline: 2px solid var(--foreground); outline-offset: 2px; box-shadow: 0 0 0 4px var(--background); }

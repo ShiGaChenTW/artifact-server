@@ -1,22 +1,20 @@
-import {ArrowLeft01Icon, Moon02Icon, Sun03Icon} from "@hugeicons/core-free-icons";
-import {HugeiconsIcon} from "@hugeicons/react";
-import {useEffect, useMemo, useState} from "react";
+import {useEffect, useMemo, useRef, useState} from "react";
 
-import {ApiError, api, type Insights, type InsightWindow, type Project} from "@/api/client";
-import {ErrorPanel, PageHeader, StatePanel} from "@/components/product";
+import {ApiError, api, type Insights, type InsightWindow, type Project, type Session} from "@/api/client";
+import {ErrorPanel, StatePanel} from "@/components/product";
 import {ButtonLink} from "@/components/ui/button";
 import {NativeSelect} from "@/components/ui/native-select";
 import {Skeleton} from "@/components/ui/skeleton";
-import {ToggleGroup, ToggleGroupItem} from "@/components/ui/toggle-group";
-import {LanguageSwitch} from "@/i18n/language-switch";
 import {dashboardText} from "@/i18n/messages/dashboard";
-import {ArtifactMark} from "../review/artifact-mark.tsx";
+import {readerText} from "@/i18n/messages/reader";
+import {AppTopBar} from "../review/app-shell.tsx";
 import {DashboardAttention} from "./dashboard-attention.tsx";
 import {ActivitySection} from "./dashboard-activity.tsx";
 import {dashboardWindows} from "./dashboard-format.ts";
 import {
   DashboardHeadline,
   OverviewSection,
+  RecentArtifacts,
   ReviewSection,
   StorageSection,
 } from "./dashboard-sections.tsx";
@@ -35,13 +33,22 @@ interface DashboardSelection {
 const allProjects = "";
 const text = dashboardText.page;
 
+type DashboardTab = "overview" | "queue" | "storage";
+const dashboardTabs: readonly {readonly id: DashboardTab; readonly label: string}[] = [
+  {id: "queue", label: readerText.dashboard.queue},
+  {id: "overview", label: readerText.dashboard.overview},
+  {id: "storage", label: readerText.dashboard.storage},
+];
+
 /** Read-only overview of artifacts, review, storage, and activity. */
 export function DashboardPage({
+  filesCapabilities,
   onThemeChange,
   principalId,
   projects,
   theme,
 }: {
+  readonly filesCapabilities: Pick<Session["capabilities"], "fileOverview" | "linkedFolders" | "trash">;
   readonly onThemeChange: () => void;
   readonly principalId: string;
   readonly projects: readonly Project[];
@@ -51,6 +58,8 @@ export function DashboardPage({
   const [state, setState] = useState<InsightsState>({status: "loading"});
   const [attempt, setAttempt] = useState(0);
   const [now, setNow] = useState(() => Date.now());
+  const [tab, setTab] = useState<DashboardTab>("queue");
+  const tabRefs = useRef(new Map<DashboardTab, HTMLButtonElement>());
   const projectIds = useMemo(() => projects.map((project) => project.id), [projects]);
   const projectNames = useMemo(
     () => new Map(projects.map((project) => [project.id, project.name])),
@@ -81,77 +90,85 @@ export function DashboardPage({
     };
   }, [attempt, selection]);
 
+  // Tabs follow the ARIA tabs pattern: arrows move between them and select.
+  const moveTab = (from: DashboardTab, step: -1 | 1): void => {
+    const index = dashboardTabs.findIndex((entry) => entry.id === from);
+    const next = dashboardTabs[(index + step + dashboardTabs.length) % dashboardTabs.length];
+    if (next === undefined) return;
+    setTab(next.id);
+    tabRefs.current.get(next.id)?.focus();
+  };
+  const windowLabel = dashboardWindows.find((option) => option.value === selection.window)?.label ?? "";
+
   return (
-    <div className="as-settings">
-      <header className="as-settings__header">
-        <div className="as-settings__header-inner">
-          <a aria-label="Artifact Server" className="as-settings__brand" href="/review">
-            <span className="as-settings__brand-mark">
-              <ArtifactMark className="as-settings__mark" />
-            </span>
-            <span className="as-settings__brand-label">{text.title}</span>
-          </a>
-          <div className="as-settings__header-actions">
-            <LanguageSwitch />
-            <button
-              aria-label={theme === "moon" ? text.useLightTheme : text.useDarkTheme}
-              className="as-icon-button"
-              onClick={onThemeChange}
-              title={theme === "moon" ? text.useLightTheme : text.useDarkTheme}
-              type="button"
-            >
-              <HugeiconsIcon icon={theme === "moon" ? Sun03Icon : Moon02Icon} strokeWidth={1.8} />
-            </button>
-            <ButtonLink href="/review" size="sm" variant="outline">
-              <HugeiconsIcon data-icon="inline-start" icon={ArrowLeft01Icon} strokeWidth={1.8} />
-              {text.backToReview}
-            </ButtonLink>
-          </div>
-        </div>
-      </header>
-      <main className="mx-auto grid w-full max-w-[72rem] min-w-0 grid-cols-1 gap-6 px-4 pt-6 pb-24 sm:px-6" id="main-content">
-        <PageHeader
-          actions={(
-            <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
-              <NativeSelect
-                aria-label={text.project}
-                onChange={(event) => setSelection((current) => ({
-                  ...current,
-                  projectId: event.target.value === allProjects ? null : event.target.value,
-                }))}
-                size="sm"
-                value={selection.projectId ?? allProjects}
-              >
-                <option value={allProjects}>{text.allProjects}</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>{project.name}</option>
-                ))}
-              </NativeSelect>
-              <ToggleGroup
-                aria-label={text.timeWindow}
-                className="w-full sm:w-fit"
-                onValueChange={(values) => {
-                  const chosen = dashboardWindows.find((option) => values.includes(option.value));
-                  if (chosen !== undefined) {
-                    setSelection((current) => ({...current, window: chosen.value}));
+    <div className="as-page">
+      <AppTopBar
+        area="dashboard"
+        capabilities={filesCapabilities}
+        onThemeChange={onThemeChange}
+        projectId={selection.projectId}
+        theme={theme}
+      />
+      <div className="as-page__scroll">
+      <main className="as-page__wrap as-dashboard" id="main-content">
+        <div className="as-page-head">
+          <h1>{text.title}</h1>
+          <div aria-label={readerText.dashboard.sections} className="as-page-tabs" role="tablist">
+            {dashboardTabs.map((entry) => (
+              <button
+                aria-controls={`dashboard-panel-${entry.id}`}
+                aria-selected={tab === entry.id}
+                className="as-page-tab"
+                id={`dashboard-tab-${entry.id}`}
+                key={entry.id}
+                onClick={() => setTab(entry.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+                    event.preventDefault();
+                    moveTab(entry.id, event.key === "ArrowRight" ? 1 : -1);
                   }
                 }}
-                size="sm"
-                spacing={0}
-                value={[selection.window]}
-                variant="outline"
+                ref={(element) => {
+                  if (element === null) tabRefs.current.delete(entry.id);
+                  else tabRefs.current.set(entry.id, element);
+                }}
+                role="tab"
+                tabIndex={tab === entry.id ? 0 : -1}
+                type="button"
               >
-                {dashboardWindows.map((option) => (
-                  <ToggleGroupItem className="flex-1 px-2 sm:flex-none sm:px-3" key={option.value} value={option.value}>
-                    {option.label}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
+                {entry.label}
+              </button>
+            ))}
+          </div>
+          <div className="as-page-head__actions">
+            <NativeSelect
+              aria-label={text.project}
+              onChange={(event) => setSelection((current) => ({
+                ...current,
+                projectId: event.target.value === allProjects ? null : event.target.value,
+              }))}
+              value={selection.projectId ?? allProjects}
+            >
+              <option value={allProjects}>{text.allProjects}</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>{project.name}</option>
+              ))}
+            </NativeSelect>
+            <div aria-label={text.timeWindow} className="as-segmented" role="group">
+              {dashboardWindows.map((option) => (
+                <button
+                  aria-pressed={selection.window === option.value}
+                  className="as-bar-button"
+                  key={option.value}
+                  onClick={() => setSelection((current) => ({...current, window: option.value}))}
+                  type="button"
+                >
+                  {option.label}
+                </button>
+              ))}
             </div>
-          )}
-          description={text.description}
-          title={text.title}
-        />
+          </div>
+        </div>
         {state.status === "loading" ? <DashboardSkeleton /> : null}
         {state.status === "failed"
           ? <DashboardFailure error={state.error} onRetry={() => setAttempt((value) => value + 1)} />
@@ -159,36 +176,62 @@ export function DashboardPage({
         {state.status === "ready"
           ? (
             <>
-              <DashboardAttention principalId={principalId} projectId={selection.projectId} projectIds={projectIds} />
-              <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-12">
-                <div className="grid min-w-0 gap-6 xl:col-span-8">
-                  <ActivitySection
-                    now={now}
-                    projectId={selection.projectId}
-                    projectNames={projectNames}
-                    window={selection.window}
-                  />
+              <div
+                aria-labelledby="dashboard-tab-queue"
+                className="as-dashboard__panel"
+                hidden={tab !== "queue"}
+                id="dashboard-panel-queue"
+                role="tabpanel"
+              >
+                <div className="as-dashboard__grid">
+                  <div className="as-dashboard__main">
+                    <DashboardAttention principalId={principalId} projectId={selection.projectId} projectIds={projectIds} />
+                    <ActivitySection
+                      now={now}
+                      projectId={selection.projectId}
+                      projectNames={projectNames}
+                      window={selection.window}
+                      windowLabel={windowLabel}
+                    />
+                  </div>
+                  <aside className="as-dashboard__side">
+                    <DashboardHeadline insights={state.insights} />
+                    <ReviewSection insights={state.insights} now={now} windowLabel={windowLabel} />
+                    <RecentArtifacts
+                      insights={state.insights}
+                      now={now}
+                      onShowOverview={() => {
+                        setTab("overview");
+                        tabRefs.current.get("overview")?.focus();
+                      }}
+                      projectNames={projectNames}
+                    />
+                  </aside>
                 </div>
-                <div className="grid min-w-0 gap-6 xl:col-span-4">
-                  <DashboardHeadline insights={state.insights} />
-                  <ReviewSection insights={state.insights} now={now} />
-                </div>
-                <div className="min-w-0 xl:col-span-12">
-                  <OverviewSection insights={state.insights} now={now} projectNames={projectNames} />
-                </div>
-                <div className="min-w-0 xl:col-span-12">
-                  <details className="rounded-[var(--radius-card)] border border-border bg-card p-4">
-                    <summary className="cursor-pointer font-medium">{dashboardText.storage.title}</summary>
-                    <div className="mt-3">
-                      <StorageSection insights={state.insights} projectNames={projectNames} />
-                    </div>
-                  </details>
-                </div>
+              </div>
+              <div
+                aria-labelledby="dashboard-tab-overview"
+                className="as-dashboard__panel"
+                hidden={tab !== "overview"}
+                id="dashboard-panel-overview"
+                role="tabpanel"
+              >
+                <OverviewSection insights={state.insights} now={now} projectNames={projectNames} />
+              </div>
+              <div
+                aria-labelledby="dashboard-tab-storage"
+                className="as-dashboard__panel"
+                hidden={tab !== "storage"}
+                id="dashboard-panel-storage"
+                role="tabpanel"
+              >
+                <StorageSection insights={state.insights} projectNames={projectNames} />
               </div>
             </>
           )
           : null}
       </main>
+      </div>
     </div>
   );
 }
@@ -222,13 +265,9 @@ function DashboardFailure({
 
 function DashboardSkeleton() {
   return (
-    <div aria-busy="true" aria-label={text.loading} className="grid gap-6">
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-        <Skeleton className="h-[28rem] xl:col-span-8" />
-        <Skeleton className="h-[28rem] xl:col-span-4" />
-        <Skeleton className="h-80 xl:col-span-7" />
-        <Skeleton className="h-80 xl:col-span-5" />
-      </div>
+    <div aria-busy="true" aria-label={text.loading} className="as-dashboard__grid">
+      <Skeleton className="h-[28rem]" />
+      <Skeleton className="h-[28rem]" />
     </div>
   );
 }

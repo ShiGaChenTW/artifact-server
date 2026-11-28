@@ -9,11 +9,12 @@ import {
 } from "../support/agent-dispatch.js";
 import {publishNew} from "../support/publishing.js";
 import {
+  type BrowserFixture,
   browserStorage,
   localLogin,
+  openDrawer,
   startBrowserFixture,
   stopBrowserFixture,
-  type BrowserFixture,
 } from "./browser-fixture.js";
 import {createThreadOverApi} from "./comment-api.js";
 
@@ -93,7 +94,7 @@ test.describe("PRS-004 one-click send and undo", () => {
       await page.goto(
         `${fixture.server.baseUrl}/review?project=prj_default&artifact=${artifactId}&version=${versionId}`,
       );
-      await page.getByRole("tab", {name: "Comments"}).click();
+      await openDrawer(page, "comments");
       const cards = page.getByRole("article");
       await expect(cards).toHaveCount(2);
       await expect(page.getByLabel("Selected annotations")).toHaveCount(0);

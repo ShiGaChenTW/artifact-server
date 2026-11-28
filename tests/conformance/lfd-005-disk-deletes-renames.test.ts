@@ -122,7 +122,8 @@ describe("deletes and renames on disk never change artifacts automatically", () 
     await writeFile(path.join(sourceRoot, "same-size.md"), "# alpha\n");
     await writeFile(path.join(sourceRoot, "stale.md"), "# stale original body\n");
     const link = await client.linkOk(sourceRoot, {name: "Guarded"});
-    await client.captureOk(link.id, {all: true});
+    const captured = await client.captureOk(link.id, {all: true});
+    const staleArtifact = captured.find((result) => result.relativePath === "stale.md");
     const before = historySnapshot(installation);
 
     await rm(path.join(sourceRoot, "same-size.md"));
@@ -135,6 +136,12 @@ describe("deletes and renames on disk never change artifacts automatically", () 
 
     await rename(path.join(sourceRoot, "stale.md"), path.join(sourceRoot, "renamed.md"));
     await client.scan(link.id);
+    // Watching and lazy source observation are asynchronous. Establish the
+    // missing-source precondition over the public API before testing hashes.
+    const missing = artifactSchema.parse(await (await client.request(
+      `/api/v1/artifacts/${staleArtifact?.artifactId ?? ""}`,
+    )).json());
+    expect(missing.sourceBinding.status).toBe("missing");
     const {suggestions} = suggestionsSchema.parse(await (await client.request(
       `/api/v1/folder-links/${link.id}/relink-suggestions`,
     )).json());

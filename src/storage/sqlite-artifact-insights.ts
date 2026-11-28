@@ -20,15 +20,19 @@ const timestamp = z.string().min(1);
 const projectRowSchema = z.object({
   archived: z.union([z.literal(0), z.literal(1)]),
   artifactCount: count,
+  failedDispatches: count,
+  inProgressDispatches: count,
   latestVersionAt: timestamp.nullable(),
+  logicalBytes: bytes,
   name: z.string(),
+  openThreads: count,
   projectId: z.string(),
   versionCount: count,
+  versionsInWindow: count,
 });
 const catalogTotalsSchema = z.object({
   publicLinkCount: count,
   untaggedArtifactCount: count,
-  versionsInWindow: count,
 });
 const recentArtifactSchema = z.object({
   artifactId: z.string(),
@@ -270,32 +274,84 @@ export class SqliteArtifactInsightsStore {
     const since = command.since;
     const limit = command.listLimit;
 
+    // One grouped pass per figure, each restricted to the scope and joined
+    // back by project, so a many-project installation costs a fixed number of
+    // scans rather than one query per project. Every figure uses the same
+    // predicate as the matching section total, so a project's row equals that
+    // project's own summary.
     const projects = z.array(projectRowSchema).parse(this.#database.prepare(`
       SELECT project.id AS projectId, project.name AS name,
         (project.archived_at IS NOT NULL) AS archived,
-        (SELECT COUNT(*) FROM artifacts artifact
-          WHERE artifact.project_id = project.id
-            AND artifact.deleted_at IS NULL) AS artifactCount,
-        (SELECT COUNT(*) FROM versions version
-          INNER JOIN artifacts artifact ON artifact.id = version.artifact_id
-          WHERE version.project_id = project.id
-            AND artifact.deleted_at IS NULL) AS versionCount,
-        (SELECT MAX(version.created_at) FROM versions version
-          INNER JOIN artifacts artifact ON artifact.id = version.artifact_id
-          WHERE version.project_id = project.id
-            AND artifact.deleted_at IS NULL) AS latestVersionAt
+        COALESCE(live.artifactCount, 0) AS artifactCount,
+        COALESCE(published.versionCount, 0) AS versionCount,
+        COALESCE(published.versionsInWindow, 0) AS versionsInWindow,
+        published.latestVersionAt AS latestVersionAt,
+        COALESCE(threads.openThreads, 0) AS openThreads,
+        COALESCE(dispatches.inProgressDispatches, 0) AS inProgressDispatches,
+        COALESCE(dispatches.failedDispatches, 0) AS failedDispatches,
+        COALESCE(retained.logicalBytes, 0) AS logicalBytes
       FROM projects project
+      LEFT JOIN (
+        SELECT artifact.project_id AS projectId, COUNT(*) AS artifactCount
+        FROM artifacts artifact
+        INNER JOIN projects project ON project.id = artifact.project_id
+        WHERE ${scope} AND artifact.deleted_at IS NULL
+        GROUP BY artifact.project_id
+      ) live ON live.projectId = project.id
+      LEFT JOIN (
+        SELECT version.project_id AS projectId, COUNT(*) AS versionCount,
+          COALESCE(SUM(? IS NULL OR version.created_at >= ?), 0) AS versionsInWindow,
+          MAX(version.created_at) AS latestVersionAt
+        FROM versions version
+        INNER JOIN artifacts artifact ON artifact.id = version.artifact_id
+        INNER JOIN projects project ON project.id = version.project_id
+        WHERE ${scope} AND artifact.deleted_at IS NULL
+        GROUP BY version.project_id
+      ) published ON published.projectId = project.id
+      LEFT JOIN (
+        SELECT thread.project_id AS projectId, COUNT(*) AS openThreads
+        FROM comment_threads thread
+        INNER JOIN artifacts artifact ON artifact.id = thread.artifact_id
+        INNER JOIN projects project ON project.id = thread.project_id
+        WHERE ${scope} AND thread.installation_id = project.installation_id
+          AND artifact.deleted_at IS NULL AND thread.state = 'open'
+        GROUP BY thread.project_id
+      ) threads ON threads.projectId = project.id
+      LEFT JOIN (
+        SELECT dispatch.project_id AS projectId,
+          SUM(dispatch.state IN ('queued', 'claimed', 'delivered'))
+            AS inProgressDispatches,
+          SUM(dispatch.state = 'failed') AS failedDispatches
+        FROM agent_dispatches dispatch
+        INNER JOIN projects project ON project.id = dispatch.project_id
+        WHERE ${scope} AND dispatch.installation_id = project.installation_id
+        GROUP BY dispatch.project_id
+      ) dispatches ON dispatches.projectId = project.id
+      LEFT JOIN (
+        -- Retained bytes keep the versions of deleted artifacts, as the
+        -- storage section does: deletion keeps immutable bytes.
+        SELECT version.project_id AS projectId, SUM(entry.size) AS logicalBytes
+        FROM versions version
+        INNER JOIN projects project ON project.id = version.project_id
+        INNER JOIN manifest_entries entry ON entry.version_id = version.id
+        WHERE ${scope}
+        GROUP BY version.project_id
+      ) retained ON retained.projectId = project.id
       WHERE ${scope}
       ORDER BY project.created_at, project.id
-    `).all(...scoped));
+    `).all(
+      ...scoped,
+      since,
+      since,
+      ...scoped,
+      ...scoped,
+      ...scoped,
+      ...scoped,
+      ...scoped,
+    ));
 
     const catalog = catalogTotalsSchema.parse(this.#database.prepare(`
       SELECT
-        (SELECT COUNT(*) FROM versions version
-          INNER JOIN artifacts artifact ON artifact.id = version.artifact_id
-          INNER JOIN projects project ON project.id = version.project_id
-          WHERE ${scope} AND artifact.deleted_at IS NULL
-            AND (? IS NULL OR version.created_at >= ?)) AS versionsInWindow,
         (SELECT COUNT(*) FROM artifacts artifact
           INNER JOIN projects project ON project.id = artifact.project_id
           WHERE ${scope} AND artifact.deleted_at IS NULL
@@ -306,7 +362,7 @@ export class SqliteArtifactInsightsStore {
             AND NOT EXISTS (
               SELECT 1 FROM artifact_tags tag WHERE tag.artifact_id = artifact.id
             )) AS untaggedArtifactCount
-    `).get(...scoped, since, since, ...scoped, ...scoped));
+    `).get(...scoped, ...scoped));
 
     const recentArtifacts = z.array(recentArtifactSchema).parse(this.#database.prepare(`
       SELECT artifact.id AS artifactId, artifact.name AS name,
@@ -515,7 +571,7 @@ export class SqliteArtifactInsightsStore {
         tags,
         untaggedArtifactCount: catalog.untaggedArtifactCount,
         versionCount: sum(projects.map((project) => project.versionCount)),
-        versionsInWindow: catalog.versionsInWindow,
+        versionsInWindow: sum(projects.map((project) => project.versionsInWindow)),
       },
       review: {
         ...threads,

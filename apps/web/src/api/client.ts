@@ -246,10 +246,15 @@ const insightsSchema = z.object({
     projects: z.array(z.object({
       archived: z.boolean(),
       artifactCount: insightCountSchema,
+      failedDispatches: insightCountSchema,
+      inProgressDispatches: insightCountSchema,
       latestVersionAt: z.string().nullable(),
+      logicalBytes: insightCountSchema,
       name: z.string(),
+      openThreads: insightCountSchema,
       projectId: z.string(),
       versionCount: insightCountSchema,
+      versionsInWindow: insightCountSchema,
     })),
     publicLinkCount: insightCountSchema,
     recentArtifacts: z.array(insightArtifactRefSchema.extend({

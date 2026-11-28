@@ -4,7 +4,7 @@ title: CI：macOS portability job 在整套平行測試下 lifecycle CLI 測試�
 status: To Do
 assignee: []
 created_date: '2026-11-27T18:44:05Z'
-updated_date: '2026-11-28T01:29:25Z'
+updated_date: '2026-11-28T04:06:35Z'
 labels: []
 dependencies:
   - ARTSV-9
@@ -32,4 +32,6 @@ PR #4（ARTSV-9）把 macOS job 從已停用的 macos-14 改成 macos-15 後，�
 2026-11-28：main push 的 run 46051581432 macOS 有取得 runner，但整個 job 超過 timeout-minutes: 12 被取消（前一次 PR run 是 8.5 分鐘跑到 lifecycle-cli 逾時）。兩次都指向 macOS runner 上整套測試太慢；處理時要一併檢討 job 的 12 分鐘上限與 vitest worker 數。
 
 2026-11-28：結論是 job 時間預算不夠，不是測試失敗。run 46051581432 的 pnpm check 在 9m15s 內通過（115/115 測試檔），之後 pnpm cache 冷啟動多出約 2 分鐘安裝，加上 cache save，超過 12 分鐘上限。PR #5 把 job 上限改成 20 分鐘，測試逾時不變。lifecycle-cli 30 s 逾時目前只出現過一次，列為剩下的風險。
+
+2026-11-28：PR #5 依 Scott 指示合併（f95caef），尚未有 CI 結果（Actions 停用）；AC2 待 Actions 恢復後確認。
 <!-- SECTION:NOTES:END -->

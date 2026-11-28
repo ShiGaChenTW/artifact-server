@@ -4963,6 +4963,60 @@ requirements:
         run: project/evidence/local-foundation.json
         recorded_at: "2026-11-23T19:31:06.217Z"
 
+  - id: DSH-006
+    kind: behavior
+    behavior: The All-projects dashboard summary lists every project of the installation with its artifact, version, in-window version, latest-publish, open-thread, in-progress and failed dispatch, and retained logical-byte figures, each equal to that project's own summary.
+    owner: http-api
+    source: {file: dashboard-insights-spec.md, anchor: all-projects-summary}
+    acceptance:
+      behavior: {id: DSH-006-B, description: "With two projects sharing a blob, two same-name projects, an empty project, and an archived project, every row reports exact figures equal to the single-project summary, declared bytes sum to the installation total, and deduplicated stored bytes stay an installation figure smaller than that sum."}
+      failure: {id: DSH-006-F, description: "A closed window empties only in-window counts, a trashed artifact leaves catalog and review figures but keeps its retained bytes, purge reclaims no bytes, and reading the summary changes no artifact or version."}
+    deployments: [local]
+    status: verified
+    depends_on: [DSH-001, DSH-002, DSH-003]
+    evidence:
+      - deployment: local
+        tests: [DSH-006-B, DSH-006-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-28T04:29:57.252Z"
+
+  - id: DSH-007
+    kind: security
+    behavior: The All-projects summary lists, drills into, and counts only the caller's installation's projects under the existing dashboard authority.
+    owner: authorization
+    source: {file: dashboard-insights-spec.md, anchor: all-projects-summary}
+    acceptance:
+      behavior: {id: DSH-007-B, description: "An administrator browser session and an artifact:read key read identical rows for every project of their own installation."}
+      failure: {id: DSH-007-F, description: "Another installation's same-name project is never listed or counted, drilling into it or into an unknown project answers PROJECT_NOT_FOUND, a store bound to another installation over the same database reads nothing, and anonymous or agent-only callers are refused."}
+    deployments: [local]
+    status: verified
+    depends_on: [DSH-005, DSH-006]
+    evidence:
+      - deployment: local
+        tests: [DSH-007-B, DSH-007-F]
+        result: pass
+        run: project/evidence/local-foundation.json
+        recorded_at: "2026-11-28T04:29:57.252Z"
+
+  - id: DSH-008
+    kind: behavior
+    behavior: The dashboard's All-projects view shows one row per project with labelled current and in-window figures and links to that project's dashboard and artifact list that keep the scope and window across a refresh.
+    owner: web-application
+    source: {file: dashboard-insights-spec.md, anchor: all-projects-summary}
+    acceptance:
+      behavior: {id: DSH-008-B, description: "In English and Traditional Chinese, light and dark themes, and at 390 pixels without horizontal page scroll, every project row shows its figures, marks, and IDs for same-name projects; keyboard-reached links open the project's dashboard with the same window and its Files list, and a refresh keeps both."}
+      failure: {id: DSH-008-F, description: "While loading the page is busy with no figures, a failed read shows an error with retry, an unknown project shows Project not found, and an installation without projects shows its own empty state, never a table of zeros."}
+    deployments: [local]
+    status: verified
+    depends_on: [DSH-006]
+    evidence:
+      - deployment: local
+        tests: [DSH-008-B, DSH-008-F]
+        result: pass
+        run: project/evidence/browser.json
+        recorded_at: "2026-11-28T04:31:42.351Z"
+
   # Fork-local interface language (ShiGaChenTW/artifact-server); not upstream.
   - id: LANG-001
     kind: behavior

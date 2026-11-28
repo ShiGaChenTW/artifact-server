@@ -32,10 +32,15 @@ const insightsSchema = z.object({
       projects: z.array(z.object({
         archived: z.boolean(),
         artifactCount: z.number(),
+        failedDispatches: z.number(),
+        inProgressDispatches: z.number(),
         latestVersionAt: z.string().nullable(),
+        logicalBytes: z.number(),
         name: z.string(),
+        openThreads: z.number(),
         projectId: z.string(),
         versionCount: z.number(),
+        versionsInWindow: z.number(),
       })),
       publicLinkCount: z.number(),
       recentArtifacts: z.array(z.object({
@@ -292,10 +297,15 @@ describe("dashboard insights", () => {
       projects: [{
         archived: false,
         artifactCount: 2,
+        failedDispatches: 0,
+        inProgressDispatches: 1,
         latestVersionAt: alphaSecond.version.createdAt,
+        logicalBytes: size(sharedContent) * 2 + size(secondVersionContent) + size(deletedContent),
         name: "Alpha",
+        openThreads: 1,
         projectId: alphaId,
         versionCount: 3,
+        versionsInWindow: 2,
       }],
       publicLinkCount: 1,
       recentArtifacts: [

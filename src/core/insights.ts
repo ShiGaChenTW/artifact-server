@@ -23,14 +23,34 @@ export const insightDispatchStates = [
 /** One agent-dispatch lifecycle state. */
 export type InsightDispatchState = (typeof insightDispatchStates)[number];
 
-/** Artifact and version totals for one project in the reporting scope. */
+/**
+ * One project's summary row. Every figure is a current total except
+ * `versionsInWindow`, which counts only versions published inside the window.
+ * Each figure equals the matching figure of that project's own summary.
+ */
 export interface ProjectInsight {
   readonly archived: boolean;
+  /** Live (not deleted) artifacts. */
   readonly artifactCount: number;
+  /** Failed agent dispatches. */
+  readonly failedDispatches: number;
+  /** Queued, claimed, or delivered agent dispatches: still with an agent. */
+  readonly inProgressDispatches: number;
   readonly latestVersionAt: string | null;
+  /**
+   * Bytes declared by every retained version of this project, including the
+   * versions of deleted artifacts. Content shared with other projects counts
+   * in each project; only the installation-scope stored figure deduplicates.
+   */
+  readonly logicalBytes: number;
   readonly name: string;
+  /** Unresolved comment threads on live artifacts. */
+  readonly openThreads: number;
   readonly projectId: string;
+  /** Versions of live artifacts. */
   readonly versionCount: number;
+  /** Versions of live artifacts published inside the window. */
+  readonly versionsInWindow: number;
 }
 
 /** One live artifact ordered by its most recent version. */

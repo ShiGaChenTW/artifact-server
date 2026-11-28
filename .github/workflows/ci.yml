@@ -198,7 +198,10 @@ jobs:
     name: macOS portability
     if: inputs.tier != 'release'
     runs-on: macos-15
-    timeout-minutes: 12
+    # Run 46051581432 (cache miss): install 2 min, `pnpm check` 9 min 15 s with
+    # all 115 test files passing, then the pnpm cache save crossed the old
+    # 12-minute limit. 20 minutes leaves room for a cold cache on 3 cores.
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

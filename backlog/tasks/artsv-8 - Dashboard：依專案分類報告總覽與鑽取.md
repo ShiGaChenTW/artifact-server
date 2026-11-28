@@ -1,12 +1,13 @@
 ---
 id: ARTSV-8
 title: Dashboard：依專案分類報告總覽與鑽取
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-26T20:19:00Z'
+updated_date: '2026-11-28T04:06:35Z'
 labels:
   - project-reports
-  - awaiting-user-go
 dependencies: []
 references:
   - ARTSV-1
@@ -43,3 +44,9 @@ ordinal: 33000
 - [ ] #7 以真實服務與隔離儲存驗證兩專案、共用 blob、同名／空／封存專案、垃圾桶及跨專案權限案例；繁中與英文、鍵盤操作、窄螢幕與深淺主題的分類摘要和入口皆通過瀏覽器驗收。
 - [ ] #8 同步產品規格與 ledger，為新增行為及敵意情境附可追溯的驗收證據；pnpm verify:iteration 通過，效能敏感變更依 AGENTS.md 附同環境前後基準，尚未證明的需求明確列出。
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-28：Scott 下令開工（原 awaiting-user-go 移除）。分支 feat/artsv-8-project-overview。
+<!-- SECTION:NOTES:END -->
